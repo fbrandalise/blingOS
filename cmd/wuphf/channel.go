@@ -400,6 +400,7 @@ type channelModel struct {
 	focus            focusArea
 	sidebarCollapsed bool
 	sidebarCursor    int
+	sidebarRosterOffset int
 	threadPanelOpen  bool
 	threadPanelID    string
 	threadInput      []rune
@@ -467,10 +468,16 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.ClearScreen
 
 	case tea.MouseMsg:
+		layout := computeLayout(m.width, m.height, m.threadPanelOpen, m.sidebarCollapsed)
+		inSidebar := layout.ShowSidebar && msg.X < layout.SidebarW
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			if m.focus == focusThread && m.threadPanelOpen {
 				m.threadScroll++
+			} else if inSidebar {
+				if m.sidebarRosterOffset > 0 {
+					m.sidebarRosterOffset--
+				}
 			} else {
 				m.scroll++
 			}
@@ -479,6 +486,8 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.threadScroll > 0 {
 					m.threadScroll--
 				}
+			} else if inSidebar {
+				m.sidebarRosterOffset++
 			} else {
 				if m.scroll > 0 {
 					m.scroll--
@@ -646,6 +655,10 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.pending != nil && m.pending.ID != "" {
+				if m.pending.Blocking || m.pending.Required {
+					m.notice = "Human decision required. Answer it before the team can continue."
+					return m, nil
+				}
 				m.snoozedInterview = m.pending.ID
 				m.notice = "Request snoozed. Team remains paused until it is answered."
 				return m, nil
@@ -1172,6 +1185,10 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m.answerRequest(req)
 				}
 			case "snooze":
+				if req, ok := m.findRequestByID(reqID); ok && (req.Blocking || req.Required) {
+					m.notice = "This decision cannot be snoozed. Answer it before the team continues."
+					return m, nil
+				}
 				m.snoozedInterview = reqID
 				m.notice = "Request snoozed."
 				return m, nil
@@ -1261,6 +1278,15 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input = nil
 			m.inputPos = 0
 			m.snoozedInterview = ""
+			if m.pending.Blocking || m.pending.Required {
+				m.activeApp = officeAppMessages
+				m.syncSidebarCursorToActive()
+				m.notice = "Human decision needed. Team is paused until you answer."
+				if m.pending.ReplyTo != "" {
+					m.threadPanelOpen = true
+					m.threadPanelID = m.pending.ReplyTo
+				}
+			}
 		}
 
 	case channelTickMsg:
@@ -1293,7 +1319,7 @@ func (m channelModel) View() string {
 	// ── Sidebar ──────────────────────────────────────────────────────
 	sidebar := ""
 	if layout.ShowSidebar {
-		sidebar = renderSidebar(m.channels, mergeOfficeMembers(m.officeMembers, m.members, m.currentChannelInfo()), m.activeChannel, m.activeApp, m.sidebarCursor, m.focus == focusSidebar, m.quickJumpTarget, m.brokerConnected, layout.SidebarW, layout.ContentH)
+		sidebar = renderSidebar(m.channels, mergeOfficeMembers(m.officeMembers, m.members, m.currentChannelInfo()), m.activeChannel, m.activeApp, m.sidebarCursor, m.sidebarRosterOffset, m.focus == focusSidebar, m.quickJumpTarget, m.brokerConnected, layout.SidebarW, layout.ContentH)
 	}
 
 	// ── Thread panel ─────────────────────────────────────────────────
@@ -2052,6 +2078,7 @@ func (m channelModel) updateThread(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // updateSidebar handles key events when the sidebar is focused.
 func (m channelModel) updateSidebar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	roster := mergeOfficeMembers(m.officeMembers, m.members, m.currentChannelInfo())
 	switch msg.String() {
 	case "up", "k":
 		m.sidebarCursor--
@@ -2059,6 +2086,21 @@ func (m channelModel) updateSidebar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		m.sidebarCursor++
 		m.clampSidebarCursor()
+	case "pgup":
+		m.sidebarRosterOffset -= 3
+		if m.sidebarRosterOffset < 0 {
+			m.sidebarRosterOffset = 0
+		}
+	case "pgdown":
+		m.sidebarRosterOffset += 3
+		maxOffset := maxInt(0, len(roster)-1)
+		if m.sidebarRosterOffset > maxOffset {
+			m.sidebarRosterOffset = maxOffset
+		}
+	case "home":
+		m.sidebarRosterOffset = 0
+	case "end":
+		m.sidebarRosterOffset = maxInt(0, len(roster)-1)
 	case "enter":
 		items := m.sidebarItems()
 		m.clampSidebarCursor()
@@ -2442,7 +2484,11 @@ func (m channelModel) findRequestByID(id string) (channelInterview, bool) {
 }
 
 func (m channelModel) focusRequest(req channelInterview, notice string) (tea.Model, tea.Cmd) {
-	m.activeApp = officeAppRequests
+	if req.Blocking || req.Required {
+		m.activeApp = officeAppMessages
+	} else {
+		m.activeApp = officeAppRequests
+	}
 	m.syncSidebarCursorToActive()
 	m.pending = &req
 	m.snoozedInterview = ""
@@ -2456,7 +2502,11 @@ func (m channelModel) focusRequest(req channelInterview, notice string) (tea.Mod
 }
 
 func (m channelModel) answerRequest(req channelInterview) (tea.Model, tea.Cmd) {
-	m.activeApp = officeAppRequests
+	if req.Blocking || req.Required {
+		m.activeApp = officeAppMessages
+	} else {
+		m.activeApp = officeAppRequests
+	}
 	m.syncSidebarCursorToActive()
 	m.pending = &req
 	m.snoozedInterview = ""
@@ -3157,6 +3207,10 @@ func (m channelModel) runCommand(trimmed, threadTarget string) (tea.Model, tea.C
 		case "answer":
 			return m.answerRequest(req)
 		case "snooze":
+			if req.Blocking || req.Required {
+				m.notice = "This decision cannot be snoozed. Answer it before the team continues."
+				return m, nil
+			}
 			m.snoozedInterview = req.ID
 			m.notice = "Request snoozed."
 			return m, nil

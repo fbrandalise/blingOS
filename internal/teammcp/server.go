@@ -780,11 +780,19 @@ func handleTeamRequest(ctx context.Context, _ *mcp.CallToolRequest, args TeamReq
 		replyTo, _ = inferReplyTarget(ctx, slug, channel)
 	}
 
+	kind := defaultRequestKind(args.Kind)
+	blocking := args.Blocking
+	required := args.Required
+	if kind == "approval" || kind == "confirm" || kind == "choice" {
+		blocking = true
+		required = true
+	}
+
 	var created struct {
 		ID string `json:"id"`
 	}
 	if err := brokerPostJSON(ctx, "/requests", map[string]any{
-		"kind":           strings.TrimSpace(args.Kind),
+		"kind":           kind,
 		"channel":        channel,
 		"from":           slug,
 		"title":          strings.TrimSpace(args.Title),
@@ -792,8 +800,8 @@ func handleTeamRequest(ctx context.Context, _ *mcp.CallToolRequest, args TeamReq
 		"context":        args.Context,
 		"options":        args.Options,
 		"recommended_id": args.RecommendedOptionID,
-		"blocking":       args.Blocking,
-		"required":       args.Required,
+		"blocking":       blocking,
+		"required":       required,
 		"secret":         args.Secret,
 		"reply_to":       replyTo,
 	}, &created); err != nil {

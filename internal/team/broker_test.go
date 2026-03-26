@@ -699,6 +699,50 @@ func TestBrokerRequestsLifecycle(t *testing.T) {
 	}
 }
 
+func TestBrokerDecisionRequestsDefaultToBlocking(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	b := NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("failed to start broker: %v", err)
+	}
+	defer b.Stop()
+
+	base := fmt.Sprintf("http://%s", b.Addr())
+	body, _ := json.Marshal(map[string]any{
+		"kind":     "approval",
+		"from":     "ceo",
+		"channel":  "general",
+		"title":    "Approval needed",
+		"question": "Should we proceed?",
+	})
+	req, _ := http.NewRequest(http.MethodPost, base+"/requests", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+b.Token())
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request create failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 creating request, got %d: %s", resp.StatusCode, raw)
+	}
+
+	var created struct {
+		Request humanInterview `json:"request"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if !created.Request.Blocking || !created.Request.Required {
+		t.Fatalf("expected approval to default to blocking+required, got %+v", created.Request)
+	}
+}
+
 func TestQueueEndpointShowsDueJobs(t *testing.T) {
 	oldPathFn := brokerStatePath
 	tmpDir := t.TempDir()

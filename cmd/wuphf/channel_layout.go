@@ -20,8 +20,8 @@ type layoutDimensions struct {
 //
 // Breakpoints:
 //
-//	Wide  (120+) : sidebar 22, thread 35 (when open)
-//	Medium(80-119): sidebar 20, thread overlays main
+//	Wide  (120+) : sidebar 31, thread 40 (when open)
+//	Medium(80-119): sidebar 26, thread overlays main
 //	Narrow(<80)  : no sidebar, thread overlays main
 func computeLayout(width, height int, threadOpen, sidebarCollapsed bool) layoutDimensions {
 	const (
@@ -29,8 +29,8 @@ func computeLayout(width, height int, threadOpen, sidebarCollapsed bool) layoutD
 		borderW     = 1 // vertical border between panels
 		wideBreak   = 126
 		mediumBreak = 88
-		wideSidebar = 28
-		medSidebar  = 24
+		wideSidebar = 31
+		medSidebar  = 26
 		wideThread  = 40
 	)
 

@@ -322,6 +322,38 @@ func TestBuildCalendarLinesShowsNextRunMetadata(t *testing.T) {
 	}
 }
 
+func TestBuildCalendarLinesPinsTeammateCalendarsBeforeAgenda(t *testing.T) {
+	lines := buildCalendarLines(nil, nil, []channelTask{
+		{
+			ID:        "task-1",
+			Title:     "Ship onboarding",
+			Status:    "open",
+			Owner:     "fe",
+			Channel:   "general",
+			DueAt:     time.Now().Add(30 * time.Minute).Format(time.RFC3339),
+			CreatedBy: "ceo",
+			UpdatedAt: time.Now().Format(time.RFC3339),
+			CreatedAt: time.Now().Format(time.RFC3339),
+		},
+	}, nil, "general", []channelMember{
+		{Slug: "ceo", Name: "CEO"},
+		{Slug: "fe", Name: "Frontend Engineer"},
+	}, calendarRangeWeek, "", 80)
+
+	rendered := stripANSI(joinRenderedLines(lines))
+	teamIdx := strings.Index(rendered, "Teammate calendars")
+	agendaIdx := strings.Index(rendered, "Agenda")
+	if teamIdx < 0 || agendaIdx < 0 {
+		t.Fatalf("expected teammate calendars and agenda sections, got %q", rendered)
+	}
+	if teamIdx > agendaIdx {
+		t.Fatalf("expected teammate calendars before agenda, got %q", rendered)
+	}
+	if strings.Index(rendered, "Frontend Engineer") < teamIdx {
+		t.Fatalf("expected participant cards inside teammate calendar section, got %q", rendered)
+	}
+}
+
 func TestCtrlGQuickJumpSelectsChannel(t *testing.T) {
 	m := newChannelModel(false)
 	m.width = 120
@@ -385,6 +417,7 @@ func TestRenderSidebarShowsOfficeCharacterBubble(t *testing.T) {
 		"general",
 		officeAppMessages,
 		0,
+		0,
 		false,
 		quickJumpNone,
 		true,
@@ -394,11 +427,19 @@ func TestRenderSidebarShowsOfficeCharacterBubble(t *testing.T) {
 	if !strings.Contains(sidebar, "Frontend Engineer") {
 		t.Fatalf("expected sidebar member, got %q", sidebar)
 	}
-	if !strings.Contains(sidebar, "\u201c") {
+	if !strings.Contains(sidebar, "▗ ") {
 		t.Fatalf("expected Office-style mood bubble, got %q", sidebar)
 	}
 	if !strings.Contains(sidebar, "Ctrl+G channels") {
 		t.Fatalf("expected quick nav hint in sidebar, got %q", sidebar)
+	}
+}
+
+func TestRenderThoughtBubbleDoesNotTruncateLongerAside(t *testing.T) {
+	got := stripANSI(strings.Join(renderThoughtBubble("This is still happening", 10), "\n"))
+	compact := strings.NewReplacer("▗", "", "▖", "", "▘", "", " ", "", "\n", "").Replace(got)
+	if compact != "Thisisstillhappening" {
+		t.Fatalf("expected thought bubble to keep full wrapped text, got %q", got)
 	}
 }
 
@@ -409,14 +450,15 @@ func TestRenderSidebarUsesCompactRosterWhenSpaceIsTight(t *testing.T) {
 		"general",
 		officeAppMessages,
 		0,
+		0,
 		false,
 		quickJumpNone,
 		false,
 		36,
 		22,
 	))
-	if !strings.Contains(sidebar, "People · office roster") {
-		t.Fatalf("expected compact sidebar still to render people section, got %q", sidebar)
+	if !strings.Contains(sidebar, "Agents · office roster") {
+		t.Fatalf("expected compact sidebar still to render agents section, got %q", sidebar)
 	}
 	if strings.Contains(sidebar, "\u201c") {
 		t.Fatalf("expected compact sidebar to omit speech bubbles, got %q", sidebar)
@@ -444,16 +486,17 @@ func TestRenderSidebarFallsBackToOfficeRosterWhenPeopleListIsEmpty(t *testing.T)
 		"general",
 		officeAppMessages,
 		0,
+		0,
 		false,
 		quickJumpNone,
 		false,
 		42,
 		20,
 	))
-	if !strings.Contains(sidebar, "People · office roster") {
+	if !strings.Contains(sidebar, "Agents · office roster") {
 		t.Fatalf("expected office roster header, got %q", sidebar)
 	}
-	if !strings.Contains(sidebar, "CEO") || !strings.Contains(sidebar, "+7 more in office") {
+	if !strings.Contains(sidebar, "CEO") || !strings.Contains(sidebar, "Product Manager") {
 		t.Fatalf("expected fallback roster members, got %q", sidebar)
 	}
 }
@@ -1162,5 +1205,84 @@ func TestNewInterviewUnsnoozesCard(t *testing.T) {
 	view := stripANSI(got.View())
 	if !strings.Contains(view, "Open Question") && !strings.Contains(view, "Human Interview") && !strings.Contains(view, "Request") {
 		t.Fatalf("expected new interview card to be visible, got %q", view)
+	}
+}
+
+func TestBlockingRequestSwitchesBackToMessages(t *testing.T) {
+	m := newChannelModel(false)
+	m.activeApp = officeAppRequests
+	next, _ := m.Update(channelRequestsMsg{
+		requests: []channelInterview{{
+			ID:       "request-1",
+			Kind:     "approval",
+			From:     "ceo",
+			Channel:  "general",
+			Question: "Ship it?",
+			Blocking: true,
+			Required: true,
+		}},
+		pending: &channelInterview{
+			ID:       "request-1",
+			Kind:     "approval",
+			From:     "ceo",
+			Channel:  "general",
+			Question: "Ship it?",
+			Blocking: true,
+			Required: true,
+		},
+	})
+	got := next.(channelModel)
+	if got.activeApp != officeAppMessages {
+		t.Fatalf("expected blocking request to switch to messages, got %q", got.activeApp)
+	}
+	if got.pending == nil || got.pending.ID != "request-1" {
+		t.Fatalf("expected pending blocking request, got %+v", got.pending)
+	}
+	if !strings.Contains(got.notice, "Human decision needed") {
+		t.Fatalf("expected blocking request notice, got %q", got.notice)
+	}
+}
+
+func TestBlockingRequestCannotBeSnoozedWithEsc(t *testing.T) {
+	m := newChannelModel(false)
+	m.pending = &channelInterview{
+		ID:       "request-1",
+		Kind:     "approval",
+		From:     "ceo",
+		Channel:  "general",
+		Question: "Ship it?",
+		Blocking: true,
+		Required: true,
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := next.(channelModel)
+	if got.snoozedInterview != "" {
+		t.Fatalf("expected blocking request not to snooze, got %q", got.snoozedInterview)
+	}
+	if !strings.Contains(got.notice, "cannot continue") && !strings.Contains(got.notice, "required") {
+		t.Fatalf("expected blocking decision notice, got %q", got.notice)
+	}
+}
+
+func TestBlockingRequestCannotBeSnoozedByCommand(t *testing.T) {
+	m := newChannelModel(false)
+	m.requests = []channelInterview{{
+		ID:       "request-1",
+		Kind:     "approval",
+		From:     "ceo",
+		Channel:  "general",
+		Question: "Ship it?",
+		Blocking: true,
+		Required: true,
+	}}
+	m.input = []rune("/request snooze request-1")
+	m.inputPos = len(m.input)
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got := next.(channelModel)
+	if got.snoozedInterview != "" {
+		t.Fatalf("expected blocking request not to snooze, got %q", got.snoozedInterview)
+	}
+	if !strings.Contains(got.notice, "cannot be snoozed") {
+		t.Fatalf("expected cannot-be-snoozed notice, got %q", got.notice)
 	}
 }

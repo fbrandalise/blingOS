@@ -826,6 +826,15 @@ func requestIsActive(req humanInterview) bool {
 	return status == "" || status == "pending" || status == "open"
 }
 
+func requestNeedsHumanDecision(req humanInterview) bool {
+	switch strings.TrimSpace(req.Kind) {
+	case "interview", "approval", "confirm", "choice":
+		return true
+	default:
+		return req.Required
+	}
+}
+
 func activeRequests(requests []humanInterview) []humanInterview {
 	out := make([]humanInterview, 0, len(requests))
 	for _, req := range requests {
@@ -2632,6 +2641,10 @@ func (b *Broker) handlePostRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Kind == "" {
 			req.Kind = "choice"
+		}
+		if requestNeedsHumanDecision(req) {
+			req.Blocking = true
+			req.Required = true
 		}
 		if req.Title == "" {
 			req.Title = "Request"

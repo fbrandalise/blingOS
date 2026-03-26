@@ -52,7 +52,7 @@ type memberActivity struct {
 }
 
 type officeCharacter struct {
-	Avatar string
+	Avatar []string
 	Bubble string
 }
 
@@ -113,93 +113,100 @@ func defaultSidebarRoster() []channelMember {
 }
 
 func renderOfficeCharacter(m channelMember, act memberActivity, now time.Time) officeCharacter {
-	frame := int(now.Unix() % 2)
-	avatar := agentCharacter(m.Slug, act.Label, frame)
-	bubble := officeAside(m.Slug, act.Label, m.LastMessage)
+	seed := m.Name
+	if seed == "" {
+		seed = m.Slug
+	}
+	talkFrame := 0
+	if act.Label == "talking" {
+		talkFrame = int(now.UnixNano()/250_000_000) % 2
+	}
+	avatar := renderWuphfAvatar(seed, m.Slug, talkFrame == 1)
+	bubble := officeAside(m.Slug, act.Label, m.LastMessage, now)
 	return officeCharacter{Avatar: avatar, Bubble: bubble}
 }
 
-func officeAside(slug, activity, lastMessage string) string {
+func officeAside(slug, activity, lastMessage string, now time.Time) string {
 	lists := map[string][]string{
 		"ceo:talking": {
-			"I am delegating. This is leadership.",
-			"Everyone relax. I have a framework for this.",
+			"Delegating.",
+			"Have a plan.",
 		},
 		"ceo:plotting": {
-			"I can already feel a reorg trying to happen.",
-			"This is either strategy or a very expensive detour.",
+			"Smells strategic.",
+			"Possible reorg.",
 		},
 		"pm:plotting": {
-			"Scope is a social construct until launch day.",
-			"I am once again asking for narrower requirements.",
+			"Scope creep.",
+			"Needs triage.",
 		},
 		"pm:lurking": {
-			"I am listening for hidden complexity.",
-			"This smells like a roadmap conversation.",
+			"Hidden work.",
+			"Roadmap vibes.",
 		},
 		"fe:shipping": {
-			"If this turns into a redesign, I am muting the channel.",
-			"I can ship this. I can also regret it later.",
+			"Shipping it.",
+			"Please no redesign.",
 		},
 		"fe:plotting": {
-			"That button is carrying a lot of emotional weight.",
-			"We are one vague sentence away from scope creep.",
+			"That button though.",
+			"UI is loaded.",
 		},
 		"be:shipping": {
-			"I will make it work. I did not say it will be pretty.",
-			"The database is about to learn some new feelings.",
+			"It will work.",
+			"DB has feelings.",
 		},
 		"be:plotting": {
-			"Every shortcut becomes my personality later.",
-			"I would love one fewer moving part here.",
+			"Too many moving parts.",
+			"One less service?",
 		},
 		"ai:plotting": {
-			"We should maybe eval this before we marry it.",
-			"Everyone wants magic until latency arrives.",
+			"Eval first.",
+			"Latency says hi.",
 		},
 		"ai:talking": {
-			"I can make it smarter. Whether we should is different.",
-			"That is one prompt away from becoming a whole system.",
+			"Could be smarter.",
+			"This becomes a system.",
 		},
 		"designer:plotting": {
-			"I am begging this team to let whitespace live.",
-			"We are not calling that polished yet.",
+			"Needs whitespace.",
+			"Not polished.",
 		},
 		"designer:lurking": {
-			"I have notes. They are visual and judgmental.",
-			"That color is not surviving review.",
+			"I have notes.",
+			"That color dies.",
 		},
 		"cmo:talking": {
-			"Messaging is a product decision. Sorry, but it is.",
-			"Someone has to stop us from sounding like enterprise oatmeal.",
+			"Message matters.",
+			"No oatmeal copy.",
 		},
 		"cmo:plotting": {
-			"I am trying to save us from bland positioning.",
-			"This headline currently fears commitment.",
+			"Bland alert.",
+			"We need a hook.",
 		},
 		"cro:talking": {
-			"At some point a buyer will ask what this costs.",
-			"I am just here to remind everyone revenue is real.",
+			"Price question.",
+			"Revenue is real.",
 		},
 		"cro:lurking": {
-			"I can hear an objection forming from across the office.",
-			"Someone should probably decide what we are selling first.",
+			"Objection incoming.",
+			"What are we selling?",
 		},
 		"default:talking": {
-			"I have a thought, unfortunately.",
-			"This feels important enough to have opinions about.",
+			"Have a thought.",
+			"Need opinions.",
 		},
 		"default:plotting": {
-			"I am forming a tasteful amount of concern.",
-			"I can already tell this will need follow-up.",
+			"Mild concern.",
+			"Needs follow-up.",
 		},
 		"default:shipping": {
-			"Well, here goes nothing professional.",
-			"I touched it, so now it is my problem.",
+			"Doing it.",
+			"My problem now.",
 		},
 		"default:lurking": {
-			"I am listening. Against my will.",
-			"I do have thoughts. I am rationing them.",
+			"Still here.",
+			"Thinking quietly.",
 		},
 	}
 
@@ -212,26 +219,66 @@ func officeAside(slug, activity, lastMessage string) string {
 		return ""
 	}
 
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(key + "|" + lastMessage))
+	offset := int(h.Sum32() % 9)
+	phase := (int(now.Unix()) + offset) % 18
+	if activity != "talking" {
+		showFor := 5
+		if phase >= showFor {
+			return ""
+		}
+	}
+	if activity == "talking" && lastMessage == "" {
+		return ""
+	}
+
 	if lower := strings.ToLower(lastMessage); lower != "" {
 		switch {
 		case strings.Contains(lower, "blocked"):
-			return "Cool. So this is on fire now."
+			return "Blocked."
 		case strings.Contains(lower, "launch"):
-			return "Everyone loves urgency until it becomes a calendar event."
+			return "Launch mode."
 		case strings.Contains(lower, "design"):
-			return "This is becoming a taste question, which is dangerous."
+			return "Taste fight."
 		case strings.Contains(lower, "pricing"):
-			return "Ah yes, the part where money becomes visible."
+			return "Money time."
 		}
 	}
-
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(key + "|" + lastMessage))
 	return options[int(h.Sum32())%len(options)]
 }
 
+func renderThoughtBubble(text string, width int) []string {
+	if text == "" || width < 6 {
+		return nil
+	}
+	wrapWidth := width - 4
+	if wrapWidth < 6 {
+		wrapWidth = 6
+	}
+	wrapped := strings.Split(ansi.Wrap(text, wrapWidth, ""), "\n")
+	if len(wrapped) == 0 {
+		return nil
+	}
+	bubbleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#2E2827")).
+		Background(lipgloss.Color("#F2EDE6")).
+		Bold(true)
+	tailStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#F2EDE6"))
+	lines := make([]string, 0, len(wrapped))
+	for i, line := range wrapped {
+		rendered := bubbleStyle.Render("▗ " + strings.TrimSpace(line) + " ▖")
+		if i == len(wrapped)-1 {
+			rendered += tailStyle.Render(" ▘")
+		}
+		lines = append(lines, rendered)
+	}
+	return lines
+}
+
 // renderSidebar renders the Slack-style sidebar with channels and team members.
-func renderSidebar(channels []channelInfo, members []channelMember, activeChannel string, activeApp officeApp, cursor int, focused bool, quickJump quickJumpTarget, brokerConnected bool, width, height int) string {
+func renderSidebar(channels []channelInfo, members []channelMember, activeChannel string, activeApp officeApp, cursor int, rosterOffset int, focused bool, quickJump quickJumpTarget, brokerConnected bool, width, height int) string {
 	if width < 2 {
 		return ""
 	}
@@ -341,19 +388,13 @@ func renderSidebar(channels []channelInfo, members []channelMember, activeChanne
 	divider := dividerStyle.Render(strings.Repeat("\u2500", innerW))
 	lines = append(lines, " "+divider)
 
-	peopleHeader := "People"
-	if len(members) == 0 {
-		peopleHeader = "People · office roster"
-	}
-	lines = append(lines, " "+sectionBandStyle.Width(innerW-1).Render(peopleHeader))
-
 	usedLines := len(lines)
 	availableLines := height - usedLines - 1
 	if availableLines < 0 {
 		availableLines = 0
 	}
 	compact := availableLines < 14
-	maxMembers := availableLines / 4 // 4 lines per member: name, face+role, bubble (may wrap)
+	maxMembers := availableLines / 4
 	if compact {
 		maxMembers = availableLines // 1 line per member in compact mode
 	}
@@ -361,19 +402,40 @@ func renderSidebar(channels []channelInfo, members []channelMember, activeChanne
 		maxMembers = 1
 	}
 
-	if len(members) == 0 {
+	fallbackRoster := len(members) == 0
+	if fallbackRoster {
 		members = defaultSidebarRoster()
 	}
 
-	visibleCount := len(members)
-	overflow := 0
-	if visibleCount > maxMembers {
-		overflow = visibleCount - maxMembers
-		visibleCount = maxMembers
+	totalMembers := len(members)
+	start := rosterOffset
+	if start < 0 {
+		start = 0
 	}
+	if totalMembers <= maxMembers {
+		start = 0
+	}
+	maxStart := totalMembers - maxMembers
+	if maxStart < 0 {
+		maxStart = 0
+	}
+	if start > maxStart {
+		start = maxStart
+	}
+	end := start + maxMembers
+	if end > totalMembers {
+		end = totalMembers
+	}
+	peopleHeader := "Agents"
+	if fallbackRoster {
+		peopleHeader = "Agents · office roster"
+	} else if totalMembers > 0 && end > start {
+		peopleHeader = fmt.Sprintf("Agents · %d-%d/%d", start+1, end, totalMembers)
+	}
+	lines = append(lines, " "+sectionBandStyle.Width(innerW-1).Render(peopleHeader))
 
 	now := time.Now()
-	for i := 0; i < visibleCount; i++ {
+	for i := start; i < end; i++ {
 		m := members[i]
 		act := classifyActivity(m)
 		character := renderOfficeCharacter(m, act, now)
@@ -398,16 +460,12 @@ func renderSidebar(channels []channelInfo, members []channelMember, activeChanne
 			Foreground(lipgloss.Color(agentColor)).
 			Bold(true)
 		nameRendered := nameStyle.Render(name)
-		role := m.Role
-		if role == "" {
-			role = roleLabel(m.Slug)
-		}
 		accent := lipgloss.NewStyle().Foreground(lipgloss.Color(agentColor)).Render("▎")
 		leftPart := accent + " " + dot + " " + nameRendered
 		if compact {
-			// Compact: single line per member with a compact mascot.
+			// Compact: single line per member with a simple glyph.
 			meta := memberMetaStyle.Render(act.Label)
-			mini := lipgloss.NewStyle().Foreground(lipgloss.Color(agentColor)).Render(character.Avatar)
+			mini := lipgloss.NewStyle().Foreground(lipgloss.Color(agentColor)).Render(agentAvatar(m.Slug))
 			line := leftPart + " " + mini
 			pad := innerW - ansi.StringWidth(line) - ansi.StringWidth(meta)
 			if pad < 1 {
@@ -415,43 +473,44 @@ func renderSidebar(channels []channelInfo, members []channelMember, activeChanne
 			}
 			lines = append(lines, " "+line+strings.Repeat(" ", pad)+meta)
 		} else {
-			// Full mode: one clean mascot line + role + aside.
-			avatarStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(agentColor)).Bold(true)
-			bubbleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7A7A7E")).Italic(true)
+			// Full mode: first face line shares the row with name/activity.
+			const avatarW = 4
+			avatarTop := ""
+			avatarBottom := ""
+			if len(character.Avatar) > 0 {
+				avatarTop = character.Avatar[0]
+			}
+			if len(character.Avatar) > 1 {
+				avatarBottom = character.Avatar[1]
+			}
+			if ansi.StringWidth(avatarTop) < avatarW {
+				avatarTop += strings.Repeat(" ", avatarW-ansi.StringWidth(avatarTop))
+			}
+			if ansi.StringWidth(avatarBottom) < avatarW {
+				avatarBottom += strings.Repeat(" ", avatarW-ansi.StringWidth(avatarBottom))
+			}
 
-			// Line 1: accent + dot + name + activity
-			pad := innerW - ansi.StringWidth(leftPart) - ansi.StringWidth(act.Label)
+			linePrefix := avatarTop + " " + leftPart
+			pad := innerW - ansi.StringWidth(linePrefix) - ansi.StringWidth(act.Label)
 			if pad < 1 {
 				pad = 1
 			}
-			lines = append(lines, " "+leftPart+strings.Repeat(" ", pad)+memberMetaStyle.Render(act.Label))
-
-			// Lines 2-4: sprite hat/face/body with role + bubble alongside
-			const avatarW = 10
-			textW := innerW - avatarW
-			if textW < 6 {
-				textW = 6
+			lines = append(lines, " "+linePrefix+strings.Repeat(" ", pad)+memberMetaStyle.Render(act.Label))
+			if avatarBottom != "" {
+				lines = append(lines, " "+avatarBottom)
 			}
-			roleRendered := memberMetaStyle.Render(truncateLabel(role, textW))
-			avatarRendered := avatarStyle.Render(character.Avatar)
-			lines = append(lines, " "+avatarRendered+" "+roleRendered)
-
-			// Line 3+: aside bubble
-			bubbleText := ""
 			if character.Bubble != "" {
-				bubbleText = "\u201c" + character.Bubble + "\u201d"
+				for _, bubbleLine := range renderThoughtBubble(character.Bubble, innerW-2) {
+					lines = append(lines, " "+bubbleLine)
+				}
 			}
-			if bubbleText == "" {
-				lines = append(lines, " "+strings.Repeat(" ", avatarW)+memberMetaStyle.Render("Quiet for now."))
-			} else {
-				lines = append(lines, " "+strings.Repeat(" ", avatarW)+bubbleStyle.Render(truncateLabel(bubbleText, textW)))
-			}
+			lines = append(lines, "")
 		}
 	}
 
-	if overflow > 0 {
-		more := memberMetaStyle.Render(fmt.Sprintf("\u22EF +%d more in office", overflow))
-		lines = append(lines, " "+more)
+	if totalMembers > maxMembers {
+		hint := memberMetaStyle.Render("PgUp/PgDn scroll agents")
+		lines = append(lines, " "+hint)
 	}
 
 	// Pad remaining height with empty lines.
@@ -465,12 +524,14 @@ func renderSidebar(channels []channelInfo, members []channelMember, activeChanne
 	}
 
 	// Apply sidebar background to each line, padded to full width.
-	panel := lipgloss.NewStyle().
-		Width(width).
-		Background(bg)
+	panel := lipgloss.NewStyle().Background(bg)
 
 	var rendered []string
 	for _, l := range lines {
+		visibleWidth := ansi.StringWidth(l)
+		if visibleWidth < width {
+			l += strings.Repeat(" ", width-visibleWidth)
+		}
 		rendered = append(rendered, panel.Render(l))
 	}
 

@@ -110,15 +110,16 @@ func planOfficeActions(signals []officeSignal) officeActionPlan {
 			}
 		}
 		if signal.RequiresHuman {
+			kind := requestKindForSignal(signal)
 			plan.Requests = append(plan.Requests, humanInterview{
-				Kind:      requestKindForSignal(signal),
+				Kind:      kind,
 				Status:    "pending",
 				From:      "ceo",
 				Channel:   signal.Channel,
 				Title:     signalRequestTitle(signal),
 				Question:  signalQuestion(signal),
 				Context:   signal.Content,
-				Blocking:  signal.Blocking,
+				Blocking:  signal.Blocking || kind == "approval" || kind == "choice" || kind == "confirm",
 				Required:  true,
 				Options:   signalRequestOptions(signal),
 				CreatedAt: "",
