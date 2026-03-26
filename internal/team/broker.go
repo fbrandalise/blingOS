@@ -717,8 +717,14 @@ func (b *Broker) normalizeLoadedStateLocked() {
 		if strings.TrimSpace(b.channels[i].Description) == "" {
 			b.channels[i].Description = defaultTeamChannelDescription(b.channels[i].Slug, b.channels[i].Name)
 		}
-		if b.channels[i].Slug == "general" && len(b.channels[i].Members) == 0 {
-			b.channels[i].Members = append([]string(nil), defaultOfficeMemberSlugs()...)
+		if b.channels[i].Slug == "general" && len(b.channels[i].Members) < len(b.members) {
+			// Re-populate general channel with all office members.
+			// This fixes stale state where only CEO survived a previous normalization.
+			allSlugs := make([]string, 0, len(b.members))
+			for _, m := range b.members {
+				allSlugs = append(allSlugs, m.Slug)
+			}
+			b.channels[i].Members = allSlugs
 		}
 		filteredMembers := make([]string, 0, len(b.channels[i].Members))
 		for _, slug := range uniqueSlugs(b.channels[i].Members) {
@@ -1582,11 +1588,12 @@ func (b *Broker) handleChannels(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"channels": channels})
 	case http.MethodPost:
 		var body struct {
-			Action      string `json:"action"`
-			Slug        string `json:"slug"`
-			Name        string `json:"name"`
-			Description string `json:"description"`
-			CreatedBy   string `json:"created_by"`
+			Action      string   `json:"action"`
+			Slug        string   `json:"slug"`
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Members     []string `json:"members"`
+			CreatedBy   string   `json:"created_by"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid json", http.StatusBadRequest)
@@ -1607,7 +1614,24 @@ func (b *Broker) handleChannels(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "channel already exists", http.StatusConflict)
 				return
 			}
-			members := []string{"ceo"}
+			members := uniqueSlugs(body.Members)
+			if len(members) > 0 {
+				validated := make([]string, 0, len(members))
+				var missing []string
+				for _, member := range members {
+					if b.findMemberLocked(member) == nil {
+						missing = append(missing, member)
+						continue
+					}
+					validated = append(validated, member)
+				}
+				if len(missing) > 0 {
+					http.Error(w, "unknown members: "+strings.Join(missing, ", "), http.StatusNotFound)
+					return
+				}
+				members = validated
+			}
+			members = append([]string{"ceo"}, members...)
 			if creator := normalizeChannelSlug(body.CreatedBy); creator != "" && creator != "ceo" && b.findMemberLocked(creator) != nil {
 				members = append(members, creator)
 			}

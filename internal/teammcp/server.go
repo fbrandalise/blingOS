@@ -200,11 +200,12 @@ type TeamMembersArgs struct {
 }
 
 type TeamChannelArgs struct {
-	Action      string `json:"action" jsonschema:"One of: create, remove"`
-	Channel     string `json:"channel" jsonschema:"Channel slug"`
-	Name        string `json:"name,omitempty" jsonschema:"Optional channel display name on create"`
-	Description string `json:"description,omitempty" jsonschema:"One-sentence explanation of what the channel is for. Required in practice when creating channels."`
-	MySlug      string `json:"my_slug,omitempty" jsonschema:"Your agent slug. Defaults to WUPHF_AGENT_SLUG."`
+	Action      string   `json:"action" jsonschema:"One of: create, remove"`
+	Channel     string   `json:"channel" jsonschema:"Channel slug"`
+	Name        string   `json:"name,omitempty" jsonschema:"Optional channel display name on create"`
+	Description string   `json:"description,omitempty" jsonschema:"One-sentence explanation of what the channel is for. Required in practice when creating channels."`
+	Members     []string `json:"members,omitempty" jsonschema:"Optional initial member slugs to add when creating the channel. CEO is always included."`
+	MySlug      string   `json:"my_slug,omitempty" jsonschema:"Your agent slug. Defaults to WUPHF_AGENT_SLUG."`
 }
 
 type TeamChannelMemberArgs struct {
@@ -265,7 +266,7 @@ func Run(ctx context.Context) error {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "team_channel",
-		Description: "Create or remove an office channel. When creating a channel, include a clear description of what work belongs there. Only do this when the human explicitly wants channel structure.",
+		Description: "Create or remove an office channel. When creating a channel, include a clear description of what work belongs there and the initial roster that should be in it. Only do this when the human explicitly wants channel structure.",
 	}, handleTeamChannel)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -936,6 +937,7 @@ func handleTeamChannel(ctx context.Context, _ *mcp.CallToolRequest, args TeamCha
 		"slug":        channel,
 		"name":        strings.TrimSpace(args.Name),
 		"description": strings.TrimSpace(args.Description),
+		"members":     args.Members,
 		"created_by":  slug,
 	}, nil); err != nil {
 		return toolError(err), nil, nil

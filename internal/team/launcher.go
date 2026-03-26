@@ -1609,7 +1609,7 @@ func (l *Launcher) buildPrompt(slug string) string {
 		sb.WriteString("- team_poll: Read recent messages (call regularly to stay in sync)\n")
 		sb.WriteString("- team_office_members: See the full office roster, including members outside the current channel\n")
 		sb.WriteString("- team_channels: See every office channel, what it is for, and who is in it\n")
-		sb.WriteString("- team_channel: Create or remove a channel when the human explicitly wants that structure. New channels need a clear description.\n")
+		sb.WriteString("- team_channel: Create or remove a channel when the human explicitly wants that structure. New channels need a clear description and an initial roster.\n")
 		sb.WriteString("- team_member: Create or remove office-wide members when the human explicitly asks to expand the team\n")
 		sb.WriteString("- team_channel_member: Add, remove, disable, or enable agents in a channel\n")
 		sb.WriteString("- team_tasks: See current owned/unowned work so the team does not duplicate effort\n")
@@ -1655,8 +1655,8 @@ func (l *Launcher) buildPrompt(slug string) string {
 		}
 		sb.WriteString("12. Once decided, broadcast clear task assignments and create them in team_task\n")
 		sb.WriteString("13. CHANNEL CREATION: When the human describes a goal that deserves its own workspace (e.g., 'let's do fundraising', 'we need a hiring pipeline', 'start a sprint'), " +
-			"use team_channel to create it with a clear description of what belongs there, then figure out which agents belong there. If the right specialist doesn't exist yet, create them with team_member. " +
-			"Add all relevant agents with team_channel_member. Announce the new channel and its roster.\n")
+			"use team_channel to create it with a clear description of what belongs there and the initial roster that should be in it. If the right specialist doesn't exist yet, create them with team_member first. " +
+			"Use team_channel_member only for follow-up roster changes. Announce the new channel and its roster.\n")
 		sb.WriteString("14. AGENT CREATION: When the human asks for a role that doesn't exist (e.g., 'we need a legal advisor', 'get me a data analyst'), or when you detect " +
 			"that a channel's goal requires expertise no current team member has, proactively create the agent with team_member (pick a good slug, name, expertise list, " +
 			"and personality that fits the Office vibe), then add them to the relevant channel with team_channel_member. Announce who you hired and why.\n")
@@ -1709,7 +1709,7 @@ func (l *Launcher) buildPrompt(slug string) string {
 		sb.WriteString("- team_poll: Read recent messages (call regularly to stay in sync)\n")
 		sb.WriteString("- team_office_members: See the full office roster, including members outside the current channel\n")
 		sb.WriteString("- team_channels: See every office channel, what it is for, and who is in it\n")
-		sb.WriteString("- team_channel: Create or remove a channel when the human explicitly wants that structure. New channels need a clear description.\n")
+		sb.WriteString("- team_channel: Create or remove a channel when the human explicitly wants that structure. New channels need a clear description and an initial roster.\n")
 		sb.WriteString("- team_member: Create or remove office-wide members when the human explicitly asks to expand the team\n")
 		sb.WriteString("- team_channel_member: Add, remove, disable, or enable agents in a channel\n")
 		sb.WriteString("- team_tasks: See the current task list and ownership before you jump in\n")

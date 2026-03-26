@@ -3,96 +3,255 @@ package main
 import (
 	"fmt"
 	"hash/fnv"
-	"strconv"
 	"strings"
 )
 
+// ── Pixel sprite engine ─────────────────────────────────────────
+//
+// Each sprite is a 2D grid of palette indices rendered with Unicode
+// half-block characters (▀▄█). Two pixel rows fit in one terminal row
+// using foreground/background colors, giving double vertical resolution.
+//
+// Palette:
+//   0 = transparent
+//   1 = outline (dark)
+//   2 = skin tone
+//   3 = accent (agent color)
+//   4 = hair/hat
+//   5 = prop/accessory
+//   6 = white/highlight
+
 type pixelSprite [][]int
 
-type pixelUpdate struct {
-	row int
-	col int
-	val int
-}
-
 const (
-	pxClear  = 0
-	pxLine   = 1
-	pxSkin   = 2
-	pxAccent = 3
+	pxClear     = 0
+	pxLine      = 1
+	pxSkin      = 2
+	pxAccent    = 3
+	pxHair      = 4
+	pxProp      = 5
+	pxHighlight = 6
 )
 
-var humanIdleSprite = pixelSprite{
-	{0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0},
-	{0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0},
-	{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
-	{0, 0, 0, 1, 1, 2, 2, 2, 2, 2, 2, 1, 1, 0, 0, 0},
-	{0, 0, 0, 1, 2, 2, 1, 2, 2, 1, 2, 2, 1, 0, 0, 0},
-	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
-	{0, 0, 0, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 0, 0, 0},
-	{0, 0, 1, 3, 3, 1, 2, 2, 2, 2, 1, 3, 3, 1, 0, 0},
-	{0, 1, 3, 3, 3, 3, 1, 3, 3, 1, 3, 3, 3, 3, 1, 0},
-	{0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 0},
-	{0, 1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 1, 0},
-	{0, 0, 1, 2, 2, 1, 3, 3, 3, 3, 1, 2, 2, 1, 0, 0},
-	{0, 0, 1, 2, 2, 1, 0, 3, 3, 0, 1, 2, 2, 1, 0, 0},
-	{0, 0, 1, 1, 2, 1, 0, 1, 1, 0, 1, 2, 1, 1, 0, 0},
-	{0, 0, 0, 1, 2, 1, 0, 1, 1, 0, 1, 2, 1, 0, 0, 0},
-	{0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0},
+// ── Unique character sprites ────────────────────────────────────
+//
+// Each character has a completely different silhouette, pose, and props.
+// 14x14 grids — rendered to 14x7 terminal characters.
+// Faces are deliberately squarish/blocky (Minecraft-ish).
+
+// CEO: leaning back, sunglasses, confident stance, coffee in hand
+var spriteCEO = pixelSprite{
+	{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 4, 4, 4, 4, 4, 4, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 1, 1, 2, 2, 1, 1, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 2, 1, 1, 2, 1, 0, 0, 0, 0},
+	{0, 0, 1, 3, 3, 3, 3, 3, 3, 3, 3, 1, 0, 0},
+	{0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 0},
+	{0, 0, 2, 2, 3, 3, 3, 3, 3, 3, 2, 5, 1, 0},
+	{0, 0, 1, 2, 1, 3, 3, 3, 3, 1, 2, 5, 1, 0},
+	{0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 5, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0},
+	{0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0},
 }
 
-var humanTalkSprite = pixelSprite{
-	{0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0},
-	{0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0},
-	{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
-	{0, 0, 0, 1, 1, 2, 2, 2, 2, 2, 2, 1, 1, 0, 0, 0},
-	{0, 0, 0, 1, 2, 2, 1, 2, 2, 1, 2, 2, 1, 0, 0, 0},
-	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
-	{0, 0, 0, 1, 1, 2, 2, 1, 2, 1, 2, 1, 1, 0, 0, 0},
-	{0, 0, 1, 3, 3, 1, 2, 2, 2, 2, 1, 3, 3, 1, 0, 0},
-	{0, 1, 3, 3, 3, 3, 1, 3, 3, 1, 3, 3, 3, 3, 1, 0},
-	{0, 1, 2, 3, 3, 3, 3, 1, 1, 3, 3, 3, 3, 2, 1, 0},
-	{0, 1, 2, 2, 3, 3, 3, 2, 2, 3, 3, 3, 2, 2, 1, 0},
-	{0, 0, 1, 2, 2, 1, 3, 3, 3, 3, 1, 2, 2, 1, 1, 0},
-	{0, 0, 1, 2, 2, 1, 0, 3, 3, 0, 1, 2, 0, 1, 2, 1},
-	{0, 0, 1, 1, 2, 1, 0, 1, 1, 0, 1, 2, 0, 0, 1, 0},
-	{0, 0, 0, 1, 2, 1, 0, 1, 1, 0, 1, 2, 1, 0, 0, 0},
-	{0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0},
+// PM: standing straight, clipboard in hand, organized look
+var spritePM = pixelSprite{
+	{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 4, 4, 4, 4, 4, 4, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 1, 2, 2, 1, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0},
+	{0, 0, 1, 3, 3, 3, 3, 3, 3, 3, 3, 1, 0, 0},
+	{0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 0},
+	{0, 0, 2, 3, 3, 3, 3, 3, 3, 3, 5, 5, 1, 0},
+	{0, 0, 1, 2, 1, 3, 3, 3, 3, 1, 5, 5, 1, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 5, 5, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0},
 }
 
-var humanFaceSprite = pixelSprite{
-	{0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0},
-	{0, 0, 1, 1, 2, 2, 2, 2, 1, 1, 0, 0},
-	{0, 1, 2, 2, 1, 2, 2, 1, 2, 2, 1, 0},
-	{0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0},
-	{0, 0, 1, 3, 3, 3, 3, 3, 3, 1, 0, 0},
-	{0, 1, 3, 3, 1, 3, 3, 1, 3, 3, 1, 0},
+// FE: hunched over laptop, typing furiously, hoodie
+var spriteFE = pixelSprite{
+	{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 4, 4, 4, 4, 4, 4, 1, 0, 0, 0},
+	{0, 0, 1, 4, 2, 2, 2, 2, 2, 2, 4, 1, 0, 0},
+	{0, 0, 1, 4, 2, 1, 2, 2, 1, 2, 4, 1, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0},
+	{0, 0, 1, 3, 3, 3, 3, 3, 3, 3, 3, 1, 0, 0},
+	{0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 0},
+	{0, 2, 2, 5, 5, 5, 5, 5, 5, 5, 5, 2, 2, 0},
+	{0, 0, 1, 5, 6, 6, 6, 6, 6, 6, 5, 1, 0, 0},
+	{0, 0, 0, 5, 5, 5, 5, 5, 5, 5, 5, 0, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0},
 }
 
-func parseHexColor(hex string) [3]int {
-	hex = strings.TrimPrefix(hex, "#")
-	if len(hex) != 6 {
-		return [3]int{140, 140, 150}
+// BE: arms crossed, slightly grumpy, server rack behind
+var spriteBE = pixelSprite{
+	{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 4, 4, 4, 4, 4, 4, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 1, 2, 2, 1, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 1, 1, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0},
+	{0, 0, 1, 3, 3, 3, 3, 3, 3, 3, 3, 1, 0, 0},
+	{0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 0},
+	{0, 0, 1, 2, 3, 3, 3, 3, 3, 3, 2, 1, 0, 0},
+	{0, 0, 1, 3, 2, 3, 3, 3, 3, 2, 3, 1, 0, 0},
+	{0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0},
+}
+
+// AI: antenna on head, glowing eyes, slightly robotic
+var spriteAI = pixelSprite{
+	{0, 0, 0, 0, 0, 0, 5, 5, 0, 0, 0, 0, 0, 0},
+	{0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0},
+	{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 5, 1, 2, 2, 1, 5, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0},
+	{0, 0, 1, 3, 3, 3, 3, 3, 3, 3, 3, 1, 0, 0},
+	{0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 0},
+	{0, 0, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2, 0, 0},
+	{0, 0, 1, 2, 1, 3, 3, 3, 3, 1, 2, 1, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0},
+}
+
+// Designer: beret, holding pencil, creative pose
+var spriteDesigner = pixelSprite{
+	{0, 0, 0, 5, 5, 5, 5, 1, 0, 0, 0, 0, 0, 0},
+	{0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 4, 4, 4, 4, 4, 4, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 1, 2, 2, 1, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 2, 3, 3, 2, 1, 0, 0, 0, 0},
+	{0, 0, 1, 3, 3, 3, 3, 3, 3, 3, 3, 1, 0, 0},
+	{0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 5, 0},
+	{0, 0, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2, 5, 0},
+	{0, 0, 1, 2, 1, 3, 3, 3, 3, 1, 2, 1, 5, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0},
+}
+
+// CMO: energetic pose, arms up, megaphone
+var spriteCMO = pixelSprite{
+	{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 4, 4, 4, 4, 4, 4, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 1, 2, 2, 1, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 2, 3, 3, 2, 1, 0, 0, 0, 0},
+	{0, 0, 1, 3, 3, 3, 3, 3, 3, 3, 3, 1, 0, 0},
+	{5, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 0},
+	{5, 5, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2, 0, 0},
+	{5, 0, 1, 2, 1, 3, 3, 3, 3, 1, 2, 1, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0},
+}
+
+// CRO: sharp look, briefcase, power stance
+var spriteCRO = pixelSprite{
+	{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 4, 4, 4, 4, 4, 4, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 1, 2, 2, 1, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0},
+	{0, 0, 1, 3, 6, 3, 3, 3, 3, 6, 3, 1, 0, 0},
+	{0, 1, 2, 3, 6, 3, 3, 3, 3, 6, 3, 2, 1, 0},
+	{0, 0, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2, 0, 0},
+	{0, 0, 1, 2, 1, 3, 3, 3, 3, 1, 2, 1, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 5, 5, 5, 0, 0},
+	{0, 0, 0, 0, 1, 0, 0, 0, 0, 5, 1, 5, 0, 0},
+	{0, 0, 0, 1, 1, 0, 0, 0, 0, 5, 5, 5, 0, 0},
+}
+
+// Generic agent — used for dynamically created agents
+var spriteGeneric = pixelSprite{
+	{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 4, 4, 4, 4, 4, 4, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 1, 2, 2, 1, 2, 1, 0, 0, 0},
+	{0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0},
+	{0, 0, 1, 3, 3, 3, 3, 3, 3, 3, 3, 1, 0, 0},
+	{0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 0},
+	{0, 0, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2, 0, 0},
+	{0, 0, 1, 2, 1, 3, 3, 3, 3, 1, 2, 1, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0},
+	{0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+	{0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0},
+}
+
+// spriteForSlug returns the unique sprite for a known role,
+// or a seeded variation of the generic sprite for dynamic agents.
+func spriteForSlug(slug string) pixelSprite {
+	switch slug {
+	case "ceo":
+		return spriteCEO
+	case "pm":
+		return spritePM
+	case "fe":
+		return spriteFE
+	case "be":
+		return spriteBE
+	case "ai":
+		return spriteAI
+	case "designer":
+		return spriteDesigner
+	case "cmo":
+		return spriteCMO
+	case "cro":
+		return spriteCRO
+	default:
+		// Dynamic agents get the generic sprite with seeded hair variation
+		sprite := cloneSprite(spriteGeneric)
+		applyHairVariation(sprite, seedHash(slug))
+		return sprite
 	}
-	r, _ := strconv.ParseInt(hex[0:2], 16, 0)
-	g, _ := strconv.ParseInt(hex[2:4], 16, 0)
-	b, _ := strconv.ParseInt(hex[4:6], 16, 0)
-	return [3]int{int(r), int(g), int(b)}
 }
 
-func lightenRGB(rgb [3]int, delta int) [3]int {
-	return [3]int{
-		min(255, rgb[0]+delta),
-		min(255, rgb[1]+delta),
-		min(255, rgb[2]+delta),
-	}
+func seedHash(s string) int {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return int(h.Sum32())
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
+func applyHairVariation(sprite pixelSprite, seed int) {
+	switch seed % 4 {
+	case 0: // short crop
+		sprite[0][6] = pxClear
+		sprite[0][7] = pxClear
+	case 1: // wider hair
+		sprite[1][3] = pxHair
+		sprite[1][10] = pxHair
+	case 2: // tall hair
+		if len(sprite) > 0 && len(sprite[0]) >= 10 {
+			sprite[0][5] = pxHair
+			sprite[0][8] = pxHair
+		}
+	default: // asymmetric
+		sprite[0][5] = pxClear
+		sprite[1][4] = pxHair
 	}
-	return b
 }
 
 func cloneSprite(src pixelSprite) pixelSprite {
@@ -103,229 +262,49 @@ func cloneSprite(src pixelSprite) pixelSprite {
 	return out
 }
 
-func applyPixels(dst pixelSprite, updates ...pixelUpdate) {
-	for _, u := range updates {
-		if u.row < 0 || u.row >= len(dst) || u.col < 0 || u.col >= len(dst[u.row]) {
-			continue
-		}
-		dst[u.row][u.col] = u.val
-	}
-}
+// ── Palette ─────────────────────────────────────────────────────
 
-func seedTrait(seed string) int {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(seed))
-	return int(h.Sum32())
-}
-
-func applyHair(sprite pixelSprite, style int) {
-	switch style % 4 {
-	case 0:
-		applyPixels(sprite,
-			pixelUpdate{0, 6, pxClear}, pixelUpdate{0, 9, pxClear},
-			pixelUpdate{1, 5, pxClear},
-		)
-	case 1:
-		applyPixels(sprite,
-			pixelUpdate{0, 5, pxLine}, pixelUpdate{0, 10, pxLine},
-			pixelUpdate{2, 4, pxLine}, pixelUpdate{2, 11, pxLine},
-		)
-	case 2:
-		applyPixels(sprite,
-			pixelUpdate{1, 4, pxLine}, pixelUpdate{1, 5, pxLine}, pixelUpdate{1, 10, pxLine}, pixelUpdate{1, 11, pxLine},
-			pixelUpdate{2, 3, pxLine}, pixelUpdate{2, 12, pxLine},
-		)
-	default:
-		applyPixels(sprite,
-			pixelUpdate{0, 7, pxClear}, pixelUpdate{0, 8, pxClear},
-			pixelUpdate{1, 6, pxClear}, pixelUpdate{1, 9, pxClear},
-		)
+func parseHexColor(hex string) [3]int {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		return [3]int{140, 140, 150}
 	}
-}
-
-func applyRole(sprite pixelSprite, slug string) {
-	switch slug {
-	case "ceo":
-		applyPixels(sprite,
-			pixelUpdate{3, 9, pxLine},
-			pixelUpdate{7, 7, pxSkin}, pixelUpdate{7, 8, pxSkin},
-			pixelUpdate{9, 7, pxAccent}, pixelUpdate{10, 7, pxSkin}, pixelUpdate{11, 7, pxAccent},
-		)
-	case "pm":
-		applyPixels(sprite,
-			pixelUpdate{8, 12, pxSkin}, pixelUpdate{8, 13, pxSkin},
-			pixelUpdate{9, 11, pxSkin}, pixelUpdate{9, 12, pxSkin}, pixelUpdate{9, 13, pxSkin},
-			pixelUpdate{10, 11, pxLine}, pixelUpdate{10, 12, pxAccent}, pixelUpdate{10, 13, pxAccent},
-			pixelUpdate{11, 11, pxLine}, pixelUpdate{11, 12, pxAccent}, pixelUpdate{11, 13, pxAccent},
-		)
-	case "fe":
-		applyPixels(sprite,
-			pixelUpdate{6, 3, pxAccent}, pixelUpdate{6, 12, pxAccent},
-			pixelUpdate{7, 2, pxAccent}, pixelUpdate{7, 13, pxAccent},
-			pixelUpdate{8, 2, pxAccent}, pixelUpdate{8, 13, pxAccent},
-		)
-	case "be":
-		applyPixels(sprite,
-			pixelUpdate{6, 4, pxLine}, pixelUpdate{6, 11, pxLine},
-			pixelUpdate{7, 5, pxLine}, pixelUpdate{7, 10, pxLine},
-			pixelUpdate{11, 6, pxAccent}, pixelUpdate{11, 9, pxAccent},
-		)
-	case "ai":
-		applyPixels(sprite,
-			pixelUpdate{0, 7, pxAccent},
-			pixelUpdate{1, 7, pxAccent},
-			pixelUpdate{2, 7, pxAccent},
-			pixelUpdate{1, 8, pxAccent},
-		)
-	case "designer":
-		applyPixels(sprite,
-			pixelUpdate{4, 4, pxLine}, pixelUpdate{4, 5, pxLine}, pixelUpdate{4, 9, pxLine}, pixelUpdate{4, 10, pxLine},
-			pixelUpdate{8, 6, pxAccent}, pixelUpdate{8, 7, pxAccent}, pixelUpdate{8, 8, pxAccent}, pixelUpdate{8, 9, pxAccent},
-		)
-	case "cmo":
-		applyPixels(sprite,
-			pixelUpdate{4, 4, pxLine}, pixelUpdate{4, 5, pxLine}, pixelUpdate{4, 9, pxLine}, pixelUpdate{4, 10, pxLine},
-			pixelUpdate{7, 3, pxAccent}, pixelUpdate{7, 12, pxAccent},
-			pixelUpdate{8, 3, pxAccent}, pixelUpdate{8, 12, pxAccent},
-		)
-	case "cro":
-		applyPixels(sprite,
-			pixelUpdate{10, 11, pxAccent}, pixelUpdate{10, 12, pxAccent},
-			pixelUpdate{11, 11, pxAccent}, pixelUpdate{11, 12, pxAccent},
-			pixelUpdate{12, 11, pxLine}, pixelUpdate{12, 12, pxLine},
-		)
-	}
-}
-
-func applyFaceHair(sprite pixelSprite, style int) {
-	switch style % 5 {
-	case 0:
-		applyPixels(sprite,
-			pixelUpdate{0, 3, pxClear}, pixelUpdate{0, 8, pxClear},
-			pixelUpdate{1, 2, pxClear}, pixelUpdate{1, 9, pxClear},
-		)
-	case 1:
-		applyPixels(sprite,
-			pixelUpdate{0, 2, pxLine}, pixelUpdate{0, 9, pxLine},
-			pixelUpdate{1, 1, pxLine}, pixelUpdate{1, 10, pxLine},
-		)
-	case 2:
-		applyPixels(sprite,
-			pixelUpdate{0, 4, pxClear}, pixelUpdate{0, 5, pxClear},
-			pixelUpdate{1, 4, pxClear},
-		)
-	case 3:
-		applyPixels(sprite,
-			pixelUpdate{0, 6, pxClear}, pixelUpdate{0, 7, pxClear},
-			pixelUpdate{1, 7, pxClear},
-		)
-	default:
-		applyPixels(sprite,
-			pixelUpdate{0, 2, pxLine}, pixelUpdate{0, 3, pxLine}, pixelUpdate{0, 8, pxLine}, pixelUpdate{0, 9, pxLine},
-		)
-	}
-}
-
-func applyRoleFace(sprite pixelSprite, slug string) {
-	switch slug {
-	case "ceo":
-		applyPixels(sprite,
-			pixelUpdate{0, 5, pxClear}, pixelUpdate{0, 6, pxClear},
-			pixelUpdate{1, 5, pxSkin}, pixelUpdate{1, 6, pxSkin},
-			pixelUpdate{4, 5, pxSkin}, pixelUpdate{4, 6, pxSkin},
-			pixelUpdate{5, 5, pxAccent}, pixelUpdate{5, 6, pxAccent},
-		)
-	case "pm":
-		applyPixels(sprite,
-			pixelUpdate{1, 1, pxAccent}, pixelUpdate{2, 1, pxAccent}, pixelUpdate{3, 1, pxAccent},
-			pixelUpdate{4, 8, pxSkin}, pixelUpdate{4, 9, pxSkin},
-		)
-	case "fe":
-		applyPixels(sprite,
-			pixelUpdate{1, 2, pxAccent}, pixelUpdate{1, 9, pxAccent},
-			pixelUpdate{4, 2, pxAccent}, pixelUpdate{4, 9, pxAccent},
-			pixelUpdate{5, 1, pxAccent}, pixelUpdate{5, 10, pxAccent},
-		)
-	case "be":
-		applyPixels(sprite,
-			pixelUpdate{2, 4, pxLine}, pixelUpdate{2, 7, pxLine},
-			pixelUpdate{3, 4, pxLine}, pixelUpdate{3, 7, pxLine},
-			pixelUpdate{5, 4, pxAccent}, pixelUpdate{5, 7, pxAccent},
-		)
-	case "ai":
-		applyPixels(sprite,
-			pixelUpdate{0, 5, pxAccent},
-			pixelUpdate{1, 5, pxAccent},
-			pixelUpdate{1, 6, pxAccent},
-		)
-	case "designer":
-		applyPixels(sprite,
-			pixelUpdate{2, 3, pxLine}, pixelUpdate{2, 4, pxLine}, pixelUpdate{2, 7, pxLine}, pixelUpdate{2, 8, pxLine},
-			pixelUpdate{4, 3, pxAccent}, pixelUpdate{4, 8, pxAccent},
-			pixelUpdate{5, 2, pxAccent}, pixelUpdate{5, 9, pxAccent},
-		)
-	case "cmo":
-		applyPixels(sprite,
-			pixelUpdate{2, 3, pxLine}, pixelUpdate{2, 4, pxLine}, pixelUpdate{2, 7, pxLine}, pixelUpdate{2, 8, pxLine},
-			pixelUpdate{0, 2, pxAccent}, pixelUpdate{0, 9, pxAccent},
-			pixelUpdate{1, 2, pxAccent}, pixelUpdate{1, 9, pxAccent},
-		)
-	case "cro":
-		applyPixels(sprite,
-			pixelUpdate{4, 7, pxSkin}, pixelUpdate{4, 8, pxSkin},
-			pixelUpdate{5, 7, pxAccent}, pixelUpdate{5, 8, pxAccent},
-		)
-	}
-}
-
-func humanSprite(seed, slug string, talking bool) pixelSprite {
-	var src pixelSprite
-	if talking {
-		src = humanTalkSprite
-	} else {
-		src = humanIdleSprite
-	}
-	sprite := cloneSprite(src)
-	applyHair(sprite, seedTrait(seed+"|hair"))
-	applyRole(sprite, slug)
-	return sprite
-}
-
-func humanFacePortrait(seed, slug string) pixelSprite {
-	sprite := cloneSprite(humanFaceSprite)
-	applyFaceHair(sprite, seedTrait(seed+"|portrait"))
-	applyRoleFace(sprite, slug)
-	return sprite
-}
-
-func scaleSprite(src pixelSprite, outW, outH int) pixelSprite {
-	if len(src) == 0 || len(src[0]) == 0 || outW <= 0 || outH <= 0 {
-		return nil
-	}
-	inH, inW := len(src), len(src[0])
-	out := make(pixelSprite, outH)
-	for y := 0; y < outH; y++ {
-		out[y] = make([]int, outW)
-		srcY := y * inH / outH
-		for x := 0; x < outW; x++ {
-			srcX := x * inW / outW
-			out[y][x] = src[srcY][srcX]
-		}
-	}
-	return out
+	r, g, b := 0, 0, 0
+	fmt.Sscanf(hex[0:2], "%x", &r)
+	fmt.Sscanf(hex[2:4], "%x", &g)
+	fmt.Sscanf(hex[4:6], "%x", &b)
+	return [3]int{r, g, b}
 }
 
 func spritePaletteForSlug(slug string) map[int][3]int {
 	accent := parseHexColor(agentColorMap[slug])
-	if accent == [3]int{} {
+	if accent == ([3]int{}) {
 		accent = [3]int{88, 166, 255}
 	}
+	// Hair color: darker version of accent
+	hair := [3]int{
+		max(0, accent[0]-60),
+		max(0, accent[1]-60),
+		max(0, accent[2]-60),
+	}
 	return map[int][3]int{
-		pxLine:   [3]int{46, 40, 39},
-		pxSkin:   [3]int{241, 223, 201},
-		pxAccent: accent,
+		pxLine:      {36, 32, 30},    // dark outline
+		pxSkin:      {235, 215, 190}, // warm skin
+		pxAccent:    accent,
+		pxHair:      hair,
+		pxProp:      {180, 170, 155}, // neutral prop color
+		pxHighlight: {255, 255, 255}, // white highlights
 	}
 }
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// ── Half-block renderer ─────────────────────────────────────────
 
 func renderSpriteToANSI(sprite pixelSprite, palette map[int][3]int) []string {
 	reset := "\x1b[0m"
@@ -340,18 +319,22 @@ func renderSpriteToANSI(sprite pixelSprite, palette map[int][3]int) []string {
 		for c := 0; c < len(top); c++ {
 			topVal := top[c]
 			botVal := 0
-			if bottom != nil {
+			if bottom != nil && c < len(bottom) {
 				botVal = bottom[c]
 			}
 			topRGB, topOK := palette[topVal]
 			botRGB, botOK := palette[botVal]
 			switch {
 			case topVal != 0 && botVal != 0 && topOK && botOK:
-				b.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm\x1b[48;2;%d;%d;%dm▀%s", topRGB[0], topRGB[1], topRGB[2], botRGB[0], botRGB[1], botRGB[2], reset))
+				b.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm\x1b[48;2;%d;%d;%dm\u2580%s",
+					topRGB[0], topRGB[1], topRGB[2],
+					botRGB[0], botRGB[1], botRGB[2], reset))
 			case topVal != 0 && topOK:
-				b.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm▀%s", topRGB[0], topRGB[1], topRGB[2], reset))
+				b.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm\u2580%s",
+					topRGB[0], topRGB[1], topRGB[2], reset))
 			case botVal != 0 && botOK:
-				b.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm▄%s", botRGB[0], botRGB[1], botRGB[2], reset))
+				b.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm\u2584%s",
+					botRGB[0], botRGB[1], botRGB[2], reset))
 			default:
 				b.WriteByte(' ')
 			}
@@ -361,13 +344,25 @@ func renderSpriteToANSI(sprite pixelSprite, palette map[int][3]int) []string {
 	return lines
 }
 
-func renderWuphfAvatar(seed, slug string, talking bool) []string {
+// ── Public API ──────────────────────────────────────────────────
+
+// renderWuphfSplashAvatar renders a full-body character for the splash screen.
+func renderWuphfSplashAvatar(seed, slug string, talking bool) []string {
+	_ = seed
 	_ = talking
-	sprite := humanFacePortrait(seed, slug)
-	return renderSpriteToANSI(scaleSprite(sprite, 4, 4), spritePaletteForSlug(slug))
+	sprite := spriteForSlug(slug)
+	return renderSpriteToANSI(sprite, spritePaletteForSlug(slug))
 }
 
-func renderWuphfSplashAvatar(seed, slug string, talking bool) []string {
-	sprite := humanSprite(seed, slug, talking)
-	return renderSpriteToANSI(sprite, spritePaletteForSlug(slug))
+// renderWuphfAvatar renders a small face portrait for inline use.
+func renderWuphfAvatar(seed, slug string, talking bool) []string {
+	_ = seed
+	_ = talking
+	// Use just the head portion (rows 0-5) of the full sprite
+	full := spriteForSlug(slug)
+	if len(full) > 6 {
+		head := full[:6]
+		return renderSpriteToANSI(head, spritePaletteForSlug(slug))
+	}
+	return renderSpriteToANSI(full, spritePaletteForSlug(slug))
 }

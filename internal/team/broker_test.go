@@ -196,8 +196,21 @@ func TestChannelDescriptionsAreVisibleButContentStaysRestricted(t *testing.T) {
 	tmpDir := t.TempDir()
 	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
 	defer func() { brokerStatePath = oldPathFn }()
-
 	b := NewBroker()
+	b.mu.Lock()
+	b.members = []officeMember{
+		{Slug: "ceo", Name: "CEO", Role: "CEO", BuiltIn: true},
+		{Slug: "pm", Name: "Product Manager", Role: "Product Manager"},
+		{Slug: "fe", Name: "Frontend Engineer", Role: "Frontend Engineer"},
+		{Slug: "cmo", Name: "CMO", Role: "CMO"},
+	}
+	b.channels = []teamChannel{{
+		Slug:        "general",
+		Name:        "general",
+		Description: "Company-wide room",
+		Members:     []string{"ceo", "pm", "fe", "cmo"},
+	}}
+	b.mu.Unlock()
 	if err := b.StartOnPort(0); err != nil {
 		t.Fatalf("failed to start broker: %v", err)
 	}
@@ -210,6 +223,7 @@ func TestChannelDescriptionsAreVisibleButContentStaysRestricted(t *testing.T) {
 		"slug":        "launch",
 		"name":        "launch",
 		"description": "Launch planning and launch-readiness work.",
+		"members":     []string{"pm", "fe"},
 		"created_by":  "ceo",
 	})
 	req, _ := http.NewRequest(http.MethodPost, base+"/channels", bytes.NewReader(createBody))
@@ -250,11 +264,11 @@ func TestChannelDescriptionsAreVisibleButContentStaysRestricted(t *testing.T) {
 	if launch.Description != "Launch planning and launch-readiness work." {
 		t.Fatalf("unexpected launch description: %q", launch.Description)
 	}
-	if !containsString(launch.Members, "ceo") {
-		t.Fatalf("expected CEO to be forced into new channel, got %+v", launch.Members)
+	if !containsString(launch.Members, "ceo") || !containsString(launch.Members, "pm") || !containsString(launch.Members, "fe") {
+		t.Fatalf("expected create payload members plus CEO in new channel, got %+v", launch.Members)
 	}
 
-	req, _ = http.NewRequest(http.MethodGet, base+"/messages?channel=launch&my_slug=fe", nil)
+	req, _ = http.NewRequest(http.MethodGet, base+"/messages?channel=launch&my_slug=cmo", nil)
 	req.Header.Set("Authorization", "Bearer "+b.Token())
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -274,6 +288,34 @@ func TestChannelDescriptionsAreVisibleButContentStaysRestricted(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 for CEO channel messages, got %d", resp.StatusCode)
+	}
+}
+
+func TestNormalizeLoadedStateRepopulatesGeneralFromOfficeRoster(t *testing.T) {
+	b := NewBroker()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.members = []officeMember{
+		{Slug: "ceo", Name: "CEO", Role: "CEO", BuiltIn: true},
+		{Slug: "pm", Name: "Product Manager", Role: "Product Manager"},
+		{Slug: "fe", Name: "Frontend Engineer", Role: "Frontend Engineer"},
+	}
+	b.channels = []teamChannel{{
+		Slug:        "general",
+		Name:        "general",
+		Description: "Company-wide room",
+		Members:     []string{"ceo"},
+	}}
+
+	b.normalizeLoadedStateLocked()
+
+	ch := b.findChannelLocked("general")
+	if ch == nil {
+		t.Fatal("expected general channel after normalization")
+	}
+	if !containsString(ch.Members, "ceo") || !containsString(ch.Members, "pm") || !containsString(ch.Members, "fe") {
+		t.Fatalf("expected general channel to be repopulated from office roster, got %+v", ch.Members)
 	}
 }
 
