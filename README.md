@@ -6,7 +6,7 @@ You run one command, it opens one tmux window, and suddenly you have a CEO, PM, 
 
 See it at work below:
 
-[![Watch the video](https://i.sstatic.net/Vp2cE.png)](https://youtu.be/3oActq_QXgk)
+[![Watch the demo](https://github.com/user-attachments/assets/a169b4dd-ae2c-4530-af52-8a34b7bb3fb2)](https://youtu.be/3oActq_QXgk)
 
 The name is from *The Office*. If you know, you know. If you do not, this is the bit:
 
