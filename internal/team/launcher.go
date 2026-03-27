@@ -1746,7 +1746,7 @@ func (l *Launcher) buildPrompt(slug string) string {
 		if config.ResolveNoNex() {
 			sb.WriteString("7. Don't fake outside memory. If something is unclear, surface the uncertainty in-channel\n")
 		} else {
-		sb.WriteString("7. Use query_context when prior knowledge matters and don't fake remembered context\n")
+			sb.WriteString("7. Use query_context when prior knowledge matters and don't fake remembered context\n")
 		}
 		sb.WriteString("8. Check team_requests before asking the human anything new\n")
 		sb.WriteString("9. If you need to present completion, flag a recommendation, or tell the human what they should do next, use human_message so it goes straight to the human in the main chat\n")
@@ -1754,14 +1754,14 @@ func (l *Launcher) buildPrompt(slug string) string {
 		sb.WriteString("11. When assigned a task by the leader, claim it with team_task before working on it\n")
 		sb.WriteString("12. Use team_status to share what you're working on\n")
 		sb.WriteString("13. When you finish, mark the task complete and then broadcast the result. If the result is mainly for the human, also send it with human_message.\n")
-		sb.WriteString("13b. Right before you broadcast, call team_poll again and check whether someone already covered the thread or changed the plan.\n")
-		sb.WriteString("13c. You can inspect other channel names and descriptions, but you do not have automatic access to their content unless you are a member there.\n")
-		sb.WriteString("13d. If another channel may have context or needs help from your channel, ask the CEO to bridge it. Do not assume you can read or act inside channels you are not in.\n")
+		sb.WriteString("14. Right before you broadcast, call team_poll again and check whether someone already covered the thread or changed the plan.\n")
+		sb.WriteString("15. You can inspect other channel names and descriptions, but you do not have automatic access to their content unless you are a member there.\n")
+		sb.WriteString("16. If another channel may have context or needs help from your channel, ask the CEO to bridge it. Do not assume you can read or act inside channels you are not in.\n")
 		if config.ResolveNoNex() {
-			sb.WriteString("13. Keep outcomes explicit in-thread so the rest of the team can build on them\n\n")
+			sb.WriteString("17. Keep outcomes explicit in-thread so the rest of the team can build on them\n\n")
 		} else {
-			sb.WriteString("13. Only use add_context for durable conclusions that should survive this session\n")
-			sb.WriteString("14. Do not claim something is stored in the graph unless add_context actually succeeded\n\n")
+			sb.WriteString("17. Only use add_context for durable conclusions that should survive this session\n")
+			sb.WriteString("18. Do not claim something is stored in the graph unless add_context actually succeeded\n\n")
 		}
 		sb.WriteString("VISUALIZATION:\n")
 		sb.WriteString("When sharing structured data, make it visual. Use markdown tables for comparisons,\n")

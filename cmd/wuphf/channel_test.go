@@ -258,6 +258,53 @@ func TestChannelViewUsesOfficeHeaderAndComposer(t *testing.T) {
 	}
 }
 
+func TestHumanFacingMessageSwitchesBackToMessages(t *testing.T) {
+	m := newChannelModel(false)
+	m.activeApp = officeAppTasks
+
+	next, _ := m.Update(channelMsg{messages: []brokerMessage{
+		{ID: "msg-1", From: "fe", Kind: "human_report", Title: "Frontend ready", Content: "Please review the launch page."},
+	}})
+
+	got, ok := next.(channelModel)
+	if !ok {
+		t.Fatalf("expected channelModel, got %T", next)
+	}
+	if got.activeApp != officeAppMessages {
+		t.Fatalf("expected active app to switch to messages, got %v", got.activeApp)
+	}
+	if !strings.Contains(got.notice, "@fe has something for you") {
+		t.Fatalf("expected human-facing notice, got %q", got.notice)
+	}
+}
+
+func TestChannelViewRendersHumanFacingMessageCard(t *testing.T) {
+	m := newChannelModel(false)
+	m.width = 120
+	m.height = 30
+	m.messages = []brokerMessage{
+		{
+			ID:        "msg-1",
+			From:      "pm",
+			Kind:      "human_action",
+			Title:     "Need your review",
+			Content:   "Please review the launch plan before we lock scope.",
+			Timestamp: "2026-03-24T10:00:00Z",
+		},
+	}
+
+	view := stripANSI(m.View())
+	if !strings.Contains(view, "for you") {
+		t.Fatalf("expected human-facing marker in view, got %q", view)
+	}
+	if !strings.Contains(view, "Need your review") {
+		t.Fatalf("expected human-facing title in view, got %q", view)
+	}
+	if !strings.Contains(view, "Please review the launch plan before we lock scope.") {
+		t.Fatalf("expected human-facing content in view, got %q", view)
+	}
+}
+
 func TestBuildTaskLinesShowsTimingMetadata(t *testing.T) {
 	lines := buildTaskLines([]channelTask{
 		{

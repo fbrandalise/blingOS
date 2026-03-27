@@ -57,6 +57,68 @@ func TestBrokerPersistsAndReloadsState(t *testing.T) {
 	}
 }
 
+func TestBrokerMessageKindAndTitleRoundTrip(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	b := NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("failed to start broker: %v", err)
+	}
+	defer b.Stop()
+
+	base := fmt.Sprintf("http://%s", b.Addr())
+	body, _ := json.Marshal(map[string]any{
+		"from":    "fe",
+		"channel": "general",
+		"kind":    "human_report",
+		"title":   "Frontend ready for review",
+		"content": "The launch page skeleton is ready for you to review.",
+	})
+	req, _ := http.NewRequest(http.MethodPost, base+"/messages", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+b.Token())
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post message failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 posting message, got %d: %s", resp.StatusCode, raw)
+	}
+
+	req, _ = http.NewRequest(http.MethodGet, base+"/messages?channel=general", nil)
+	req.Header.Set("Authorization", "Bearer "+b.Token())
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("get messages failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 listing messages, got %d: %s", resp.StatusCode, raw)
+	}
+
+	var result struct {
+		Messages []channelMessage `json:"messages"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode messages: %v", err)
+	}
+	if len(result.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(result.Messages))
+	}
+	if got := result.Messages[0].Kind; got != "human_report" {
+		t.Fatalf("expected human_report kind, got %q", got)
+	}
+	if got := result.Messages[0].Title; got != "Frontend ready for review" {
+		t.Fatalf("expected title to round-trip, got %q", got)
+	}
+}
+
 func TestNewBrokerSeedsDefaultOfficeRosterOnFreshState(t *testing.T) {
 	oldPathFn := brokerStatePath
 	tmpDir := t.TempDir()
