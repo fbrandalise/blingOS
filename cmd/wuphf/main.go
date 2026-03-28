@@ -24,6 +24,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	packFlag := flag.String("pack", "", "Agent pack (founding-team, coding-team, lead-gen-agency)")
 	channelView := flag.Bool("channel-view", false, "Run as channel view (internal)")
+	channelApp := flag.String("channel-app", "", "Start channel view on a specific app (internal)")
 	threadsCollapsed := flag.Bool("threads-collapsed", false, "Start with threads collapsed (default: expanded)")
 	unsafeMode := flag.Bool("unsafe", false, "Bypass all agent permission checks (use for local dev only)")
 	noNex := flag.Bool("no-nex", false, "Disable Nex completely for this run")
@@ -52,7 +53,7 @@ func main() {
 
 	// Channel view mode (launched by wuphf team in tmux)
 	if *channelView {
-		runChannelView(*threadsCollapsed)
+		runChannelView(*threadsCollapsed, resolveInitialOfficeApp(*channelApp))
 		return
 	}
 

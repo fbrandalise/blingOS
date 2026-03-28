@@ -4,6 +4,7 @@
 
 # Local artifacts
 /termwright-artifacts/
+.vexp/
 .DS_Store
 
 # Dependency installs

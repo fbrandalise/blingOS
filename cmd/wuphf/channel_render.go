@@ -318,6 +318,89 @@ func buildRequestLines(requests []channelInterview, contentWidth int) []rendered
 	return lines
 }
 
+func buildInsightLines(signals []channelSignal, decisions []channelDecision, alerts []channelWatchdog, contentWidth int) []renderedLine {
+	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(slackMuted))
+	if len(signals) == 0 && len(decisions) == 0 && len(alerts) == 0 {
+		return []renderedLine{
+			{Text: ""},
+			{Text: muted.Render("  No office signals yet.")},
+			{Text: muted.Render("  When Nex or the office policy engine notices something important, it will land here with the reasoning trail.")},
+		}
+	}
+	var lines []renderedLine
+	lines = append(lines, renderedLine{Text: renderDateSeparator(contentWidth, "Insights")})
+	appendWrappedLine := func(text string) {
+		wrapped := appendWrapped(nil, maxInt(20, contentWidth-4), text)
+		for _, line := range wrapped {
+			lines = append(lines, renderedLine{Text: line})
+		}
+	}
+	if len(signals) > 0 {
+		lines = append(lines, renderedLine{Text: "  " + lipgloss.NewStyle().Bold(true).Render("Signals")})
+		for _, signal := range reverseSignals(signals, 8) {
+			metaParts := []string{signal.Source}
+			if signal.Urgency != "" {
+				metaParts = append(metaParts, signal.Urgency)
+			}
+			if signal.Owner != "" {
+				metaParts = append(metaParts, "@"+signal.Owner)
+			}
+			if signal.Channel != "" {
+				metaParts = append(metaParts, "#"+signal.Channel)
+			}
+			if signal.Confidence != "" {
+				metaParts = append(metaParts, signal.Confidence)
+			}
+			lines = append(lines, renderedLine{Text: ""})
+			appendWrappedLine("  " + subtlePill(strings.ToUpper(fallbackString(signal.Kind, "signal")), "#E2E8F0", "#334155") + " " + lipgloss.NewStyle().Bold(true).Render(fallbackString(signal.Title, "Office signal")))
+			appendWrappedLine("  " + muted.Render(strings.Join(metaParts, " · ")))
+			appendWrappedLine("  " + signal.Content)
+		}
+	}
+	if len(decisions) > 0 {
+		lines = append(lines, renderedLine{Text: ""})
+		lines = append(lines, renderedLine{Text: "  " + lipgloss.NewStyle().Bold(true).Render("Decisions")})
+		for _, decision := range reverseDecisions(decisions, 8) {
+			metaParts := []string{decision.Kind}
+			if decision.Owner != "" {
+				metaParts = append(metaParts, "@"+decision.Owner)
+			}
+			if len(decision.SignalIDs) > 0 {
+				metaParts = append(metaParts, fmt.Sprintf("%d signal(s)", len(decision.SignalIDs)))
+			}
+			if decision.Channel != "" {
+				metaParts = append(metaParts, "#"+decision.Channel)
+			}
+			lines = append(lines, renderedLine{Text: ""})
+			appendWrappedLine("  " + accentPill("decision", "#1264A3") + " " + lipgloss.NewStyle().Bold(true).Render(decision.Summary))
+			appendWrappedLine("  " + muted.Render(strings.Join(metaParts, " · ")))
+			if strings.TrimSpace(decision.Reason) != "" {
+				appendWrappedLine("  " + muted.Render("Why: "+decision.Reason))
+			}
+		}
+	}
+	if len(alerts) > 0 {
+		lines = append(lines, renderedLine{Text: ""})
+		lines = append(lines, renderedLine{Text: "  " + lipgloss.NewStyle().Bold(true).Render("Watchdogs")})
+		for _, alert := range reverseWatchdogs(activeWatchdogs(alerts), 6) {
+			metaParts := []string{alert.Kind}
+			if alert.Owner != "" {
+				metaParts = append(metaParts, "@"+alert.Owner)
+			}
+			if alert.Channel != "" {
+				metaParts = append(metaParts, "#"+alert.Channel)
+			}
+			if alert.Status != "" {
+				metaParts = append(metaParts, alert.Status)
+			}
+			lines = append(lines, renderedLine{Text: ""})
+			appendWrappedLine("  " + subtlePill("watchdog", "#FEF3C7", "#92400E") + " " + lipgloss.NewStyle().Bold(true).Render(alert.Summary))
+			appendWrappedLine("  " + muted.Render(strings.Join(metaParts, " · ")))
+		}
+	}
+	return lines
+}
+
 func buildTaskLines(tasks []channelTask, contentWidth int) []renderedLine {
 	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(slackMuted))
 	if len(tasks) == 0 {
@@ -330,6 +413,7 @@ func buildTaskLines(tasks []channelTask, contentWidth int) []renderedLine {
 	statusColor := map[string]string{
 		"open":        "#94A3B8",
 		"in_progress": "#F59E0B",
+		"review":      "#2563EB",
 		"done":        "#22C55E",
 	}
 	var lines []renderedLine
@@ -347,6 +431,18 @@ func buildTaskLines(tasks []channelTask, contentWidth int) []renderedLine {
 		if task.Channel != "" {
 			metaParts = append(metaParts, "#"+task.Channel)
 		}
+		if task.TaskType != "" {
+			metaParts = append(metaParts, task.TaskType)
+		}
+		if task.PipelineStage != "" {
+			metaParts = append(metaParts, "stage "+task.PipelineStage)
+		}
+		if task.ReviewState != "" && task.ReviewState != "not_required" {
+			metaParts = append(metaParts, "review "+task.ReviewState)
+		}
+		if task.ExecutionMode != "" {
+			metaParts = append(metaParts, task.ExecutionMode)
+		}
 		meta := strings.Join(metaParts, " · ")
 		lines = append(lines, renderedLine{Text: ""})
 		lines = append(lines, renderedLine{Text: "  " + taskStatusPill(task.Status) + " " + lipgloss.NewStyle().Bold(true).Render(task.Title), TaskID: task.ID})
@@ -359,7 +455,26 @@ func buildTaskLines(tasks []channelTask, contentWidth int) []renderedLine {
 		if timing := renderTimingSummary(task.DueAt, task.FollowUpAt, task.ReminderAt, task.RecheckAt); timing != "" {
 			lines = append(lines, renderedLine{Text: "  " + muted.Render(timing), TaskID: task.ID})
 		}
-		lines = append(lines, renderedLine{Text: "  " + muted.Render("Click to claim, complete, block, or release."), TaskID: task.ID})
+		if task.SourceSignalID != "" || task.SourceDecisionID != "" {
+			sourceBits := []string{}
+			if task.SourceSignalID != "" {
+				sourceBits = append(sourceBits, "signal "+task.SourceSignalID)
+			}
+			if task.SourceDecisionID != "" {
+				sourceBits = append(sourceBits, "decision "+task.SourceDecisionID)
+			}
+			lines = append(lines, renderedLine{Text: "  " + muted.Render("Triggered by "+strings.Join(sourceBits, " · ")), TaskID: task.ID})
+		}
+		if task.WorktreePath != "" {
+			lines = append(lines, renderedLine{Text: "  " + muted.Render("Workspace: "+task.WorktreePath), TaskID: task.ID})
+		}
+		taskActionHint := "Click to claim, complete, block, or release."
+		if task.Status == "review" || task.ReviewState == "ready_for_review" {
+			taskActionHint = "Click to approve, block, or release."
+		} else if task.ReviewState == "pending_review" || task.ExecutionMode == "local_worktree" {
+			taskActionHint = "Click to claim, send to review, block, or release."
+		}
+		lines = append(lines, renderedLine{Text: "  " + muted.Render(taskActionHint), TaskID: task.ID})
 	}
 	return lines
 }
@@ -661,12 +776,19 @@ func taskCalendarEvents(task channelTask, activeChannel string, members []channe
 		}
 		participants := calendarParticipantsForTask(task, activeChannel, members)
 		status := strings.ReplaceAll(task.Status, "_", " ")
+		secondary := label
+		if strings.TrimSpace(task.PipelineStage) != "" {
+			secondary += " · " + task.PipelineStage
+		}
+		if strings.TrimSpace(task.ReviewState) != "" && task.ReviewState != "not_required" {
+			secondary += " · " + task.ReviewState
+		}
 		events = append(events, calendarEvent{
 			When:             when,
 			WhenLabel:        prettyCalendarWhen(when),
 			Kind:             "task",
 			Title:            task.Title,
-			Secondary:        label,
+			Secondary:        secondary,
 			Channel:          chooseCalendarChannel(task.Channel, activeChannel),
 			Status:           status,
 			Participants:     participants,
@@ -1068,4 +1190,55 @@ func sameDay(left, right time.Time) bool {
 	ly, lm, ld := left.Date()
 	ry, rm, rd := right.Date()
 	return ly == ry && lm == rm && ld == rd
+}
+
+func fallbackString(value, fallback string) string {
+	if strings.TrimSpace(value) != "" {
+		return value
+	}
+	return fallback
+}
+
+func reverseSignals(signals []channelSignal, limit int) []channelSignal {
+	if limit > 0 && len(signals) > limit {
+		signals = signals[len(signals)-limit:]
+	}
+	out := append([]channelSignal(nil), signals...)
+	reverseAny(out)
+	return out
+}
+
+func reverseDecisions(decisions []channelDecision, limit int) []channelDecision {
+	if limit > 0 && len(decisions) > limit {
+		decisions = decisions[len(decisions)-limit:]
+	}
+	out := append([]channelDecision(nil), decisions...)
+	reverseAny(out)
+	return out
+}
+
+func activeWatchdogs(alerts []channelWatchdog) []channelWatchdog {
+	var out []channelWatchdog
+	for _, alert := range alerts {
+		if strings.TrimSpace(alert.Status) == "resolved" {
+			continue
+		}
+		out = append(out, alert)
+	}
+	return out
+}
+
+func reverseWatchdogs(alerts []channelWatchdog, limit int) []channelWatchdog {
+	if limit > 0 && len(alerts) > limit {
+		alerts = alerts[len(alerts)-limit:]
+	}
+	out := append([]channelWatchdog(nil), alerts...)
+	reverseAny(out)
+	return out
+}
+
+func reverseAny[T any](items []T) {
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
 }

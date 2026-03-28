@@ -107,14 +107,20 @@ type brokerTasksResponse struct {
 }
 
 type brokerTaskSummary struct {
-	ID        string `json:"id"`
-	Channel   string `json:"channel"`
-	Title     string `json:"title"`
-	Details   string `json:"details"`
-	Owner     string `json:"owner"`
-	Status    string `json:"status"`
-	CreatedBy string `json:"created_by"`
-	ThreadID  string `json:"thread_id"`
+	ID               string `json:"id"`
+	Channel          string `json:"channel"`
+	Title            string `json:"title"`
+	Details          string `json:"details"`
+	Owner            string `json:"owner"`
+	Status           string `json:"status"`
+	CreatedBy        string `json:"created_by"`
+	ThreadID         string `json:"thread_id"`
+	TaskType         string `json:"task_type"`
+	PipelineStage    string `json:"pipeline_stage"`
+	ExecutionMode    string `json:"execution_mode"`
+	ReviewState      string `json:"review_state"`
+	SourceSignalID   string `json:"source_signal_id"`
+	SourceDecisionID string `json:"source_decision_id"`
 }
 
 type TeamBroadcastArgs struct {
@@ -224,6 +230,15 @@ type TeamChannelMemberArgs struct {
 	MySlug     string `json:"my_slug,omitempty" jsonschema:"Your agent slug. Defaults to WUPHF_AGENT_SLUG."`
 }
 
+type TeamBridgeArgs struct {
+	SourceChannel string   `json:"source_channel" jsonschema:"Channel slug the context is coming from"`
+	TargetChannel string   `json:"target_channel" jsonschema:"Channel slug the context should be carried into"`
+	Summary       string   `json:"summary" jsonschema:"Concise bridged context to carry across channels"`
+	Tagged        []string `json:"tagged,omitempty" jsonschema:"Optional agents to wake in the target channel after the bridge lands"`
+	MySlug        string   `json:"my_slug,omitempty" jsonschema:"Agent slug performing the bridge. Defaults to WUPHF_AGENT_SLUG."`
+	ReplyToID     string   `json:"reply_to_id,omitempty" jsonschema:"Optional target-channel message ID this bridge belongs to"`
+}
+
 type TeamOfficeMembersArgs struct{}
 
 type TeamMemberArgs struct {
@@ -282,6 +297,11 @@ func Run(ctx context.Context) error {
 		Name:        "team_channel_member",
 		Description: "Add, remove, disable, or enable an agent in a specific office channel.",
 	}, handleTeamChannelMember)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "team_bridge",
+		Description: "CEO-only tool to bridge relevant context from one channel into another and leave a visible cross-channel trail.",
+	}, handleTeamBridge)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "team_member",
@@ -697,6 +717,15 @@ func handleTeamTasks(ctx context.Context, _ *mcp.CallToolRequest, args TeamTasks
 		if task.Owner != "" {
 			line += " @" + task.Owner
 		}
+		if task.PipelineStage != "" {
+			line += " · stage " + task.PipelineStage
+		}
+		if task.ReviewState != "" && task.ReviewState != "not_required" {
+			line += " · review " + task.ReviewState
+		}
+		if task.ExecutionMode != "" {
+			line += " · " + task.ExecutionMode
+		}
 		line += " — " + task.Title
 		if task.ThreadID != "" {
 			line += " ↳ " + task.ThreadID
@@ -1036,6 +1065,42 @@ func handleTeamChannelMember(ctx context.Context, _ *mcp.CallToolRequest, args T
 		return toolError(err), nil, nil
 	}
 	return textResult(fmt.Sprintf("%s @%s in #%s", strings.Title(strings.TrimSpace(args.Action)), member, channel)), nil, nil
+}
+
+func handleTeamBridge(ctx context.Context, _ *mcp.CallToolRequest, args TeamBridgeArgs) (*mcp.CallToolResult, any, error) {
+	slug, err := resolveSlug(args.MySlug)
+	if err != nil {
+		return toolError(err), nil, nil
+	}
+	if slug != "ceo" {
+		return toolError(fmt.Errorf("only the CEO can bridge channel context; ask @ceo to do it")), nil, nil
+	}
+	source := resolveChannel(args.SourceChannel)
+	target := resolveChannel(args.TargetChannel)
+	if source == target {
+		return toolError(fmt.Errorf("source and target channels must be different")), nil, nil
+	}
+	var result struct {
+		ID         string   `json:"id"`
+		DecisionID string   `json:"decision_id"`
+		SignalIDs  []string `json:"signal_ids"`
+	}
+	if err := brokerPostJSON(ctx, "/bridges", map[string]any{
+		"actor":          slug,
+		"source_channel": source,
+		"target_channel": target,
+		"summary":        strings.TrimSpace(args.Summary),
+		"tagged":         args.Tagged,
+		"reply_to":       strings.TrimSpace(args.ReplyToID),
+	}, &result); err != nil {
+		return toolError(err), nil, nil
+	}
+	text := fmt.Sprintf("CEO bridged context from #%s to #%s", source, target)
+	if result.ID != "" {
+		text += " (" + result.ID + ")"
+	}
+	text += "."
+	return textResult(text), nil, nil
 }
 
 func handleTeamMember(ctx context.Context, _ *mcp.CallToolRequest, args TeamMemberArgs) (*mcp.CallToolResult, any, error) {

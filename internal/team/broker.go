@@ -78,20 +78,29 @@ type humanInterview struct {
 }
 
 type teamTask struct {
-	ID         string `json:"id"`
-	Channel    string `json:"channel,omitempty"`
-	Title      string `json:"title"`
-	Details    string `json:"details,omitempty"`
-	Owner      string `json:"owner,omitempty"`
-	Status     string `json:"status"`
-	CreatedBy  string `json:"created_by"`
-	ThreadID   string `json:"thread_id,omitempty"`
-	DueAt      string `json:"due_at,omitempty"`
-	FollowUpAt string `json:"follow_up_at,omitempty"`
-	ReminderAt string `json:"reminder_at,omitempty"`
-	RecheckAt  string `json:"recheck_at,omitempty"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
+	ID               string `json:"id"`
+	Channel          string `json:"channel,omitempty"`
+	Title            string `json:"title"`
+	Details          string `json:"details,omitempty"`
+	Owner            string `json:"owner,omitempty"`
+	Status           string `json:"status"`
+	CreatedBy        string `json:"created_by"`
+	ThreadID         string `json:"thread_id,omitempty"`
+	TaskType         string `json:"task_type,omitempty"`
+	PipelineID       string `json:"pipeline_id,omitempty"`
+	PipelineStage    string `json:"pipeline_stage,omitempty"`
+	ExecutionMode    string `json:"execution_mode,omitempty"`
+	ReviewState      string `json:"review_state,omitempty"`
+	SourceSignalID   string `json:"source_signal_id,omitempty"`
+	SourceDecisionID string `json:"source_decision_id,omitempty"`
+	WorktreePath     string `json:"worktree_path,omitempty"`
+	WorktreeBranch   string `json:"worktree_branch,omitempty"`
+	DueAt            string `json:"due_at,omitempty"`
+	FollowUpAt       string `json:"follow_up_at,omitempty"`
+	ReminderAt       string `json:"reminder_at,omitempty"`
+	RecheckAt        string `json:"recheck_at,omitempty"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
 }
 
 type teamChannel struct {
@@ -119,14 +128,59 @@ type officeMember struct {
 }
 
 type officeActionLog struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"`
-	Source    string `json:"source,omitempty"`
-	Channel   string `json:"channel,omitempty"`
-	Actor     string `json:"actor,omitempty"`
-	Summary   string `json:"summary"`
-	RelatedID string `json:"related_id,omitempty"`
-	CreatedAt string `json:"created_at"`
+	ID         string   `json:"id"`
+	Kind       string   `json:"kind"`
+	Source     string   `json:"source,omitempty"`
+	Channel    string   `json:"channel,omitempty"`
+	Actor      string   `json:"actor,omitempty"`
+	Summary    string   `json:"summary"`
+	RelatedID  string   `json:"related_id,omitempty"`
+	SignalIDs  []string `json:"signal_ids,omitempty"`
+	DecisionID string   `json:"decision_id,omitempty"`
+	CreatedAt  string   `json:"created_at"`
+}
+
+type officeSignalRecord struct {
+	ID            string `json:"id"`
+	Source        string `json:"source"`
+	SourceRef     string `json:"source_ref,omitempty"`
+	Kind          string `json:"kind,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Content       string `json:"content"`
+	Channel       string `json:"channel,omitempty"`
+	Owner         string `json:"owner,omitempty"`
+	Confidence    string `json:"confidence,omitempty"`
+	Urgency       string `json:"urgency,omitempty"`
+	DedupeKey     string `json:"dedupe_key,omitempty"`
+	RequiresHuman bool   `json:"requires_human,omitempty"`
+	Blocking      bool   `json:"blocking,omitempty"`
+	CreatedAt     string `json:"created_at"`
+}
+
+type officeDecisionRecord struct {
+	ID            string   `json:"id"`
+	Kind          string   `json:"kind"`
+	Channel       string   `json:"channel,omitempty"`
+	Summary       string   `json:"summary"`
+	Reason        string   `json:"reason,omitempty"`
+	Owner         string   `json:"owner,omitempty"`
+	SignalIDs     []string `json:"signal_ids,omitempty"`
+	RequiresHuman bool     `json:"requires_human,omitempty"`
+	Blocking      bool     `json:"blocking,omitempty"`
+	CreatedAt     string   `json:"created_at"`
+}
+
+type watchdogAlert struct {
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	Channel    string `json:"channel,omitempty"`
+	TargetType string `json:"target_type,omitempty"`
+	TargetID   string `json:"target_id,omitempty"`
+	Owner      string `json:"owner,omitempty"`
+	Status     string `json:"status,omitempty"`
+	Summary    string `json:"summary"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
 }
 
 type schedulerJob struct {
@@ -145,18 +199,21 @@ type schedulerJob struct {
 }
 
 type brokerState struct {
-	Messages          []channelMessage  `json:"messages"`
-	Members           []officeMember    `json:"members,omitempty"`
-	Channels          []teamChannel     `json:"channels,omitempty"`
-	Tasks             []teamTask        `json:"tasks,omitempty"`
-	Requests          []humanInterview  `json:"requests,omitempty"`
-	Actions           []officeActionLog `json:"actions,omitempty"`
-	Scheduler         []schedulerJob    `json:"scheduler,omitempty"`
-	Counter           int               `json:"counter"`
-	NotificationSince string            `json:"notification_since,omitempty"`
-	InsightsSince     string            `json:"insights_since,omitempty"`
-	PendingInterview  *humanInterview   `json:"pending_interview,omitempty"`
-	Usage             teamUsageState    `json:"usage,omitempty"`
+	Messages          []channelMessage       `json:"messages"`
+	Members           []officeMember         `json:"members,omitempty"`
+	Channels          []teamChannel          `json:"channels,omitempty"`
+	Tasks             []teamTask             `json:"tasks,omitempty"`
+	Requests          []humanInterview       `json:"requests,omitempty"`
+	Actions           []officeActionLog      `json:"actions,omitempty"`
+	Signals           []officeSignalRecord   `json:"signals,omitempty"`
+	Decisions         []officeDecisionRecord `json:"decisions,omitempty"`
+	Watchdogs         []watchdogAlert        `json:"watchdogs,omitempty"`
+	Scheduler         []schedulerJob         `json:"scheduler,omitempty"`
+	Counter           int                    `json:"counter"`
+	NotificationSince string                 `json:"notification_since,omitempty"`
+	InsightsSince     string                 `json:"insights_since,omitempty"`
+	PendingInterview  *humanInterview        `json:"pending_interview,omitempty"`
+	Usage             teamUsageState         `json:"usage,omitempty"`
 }
 
 type usageTotals struct {
@@ -183,6 +240,9 @@ type Broker struct {
 	tasks             []teamTask
 	requests          []humanInterview
 	actions           []officeActionLog
+	signals           []officeSignalRecord
+	decisions         []officeDecisionRecord
+	watchdogs         []watchdogAlert
 	scheduler         []schedulerJob
 	counter           int
 	notificationSince string
@@ -264,8 +324,12 @@ func (b *Broker) StartOnPort(port int) error {
 	mux.HandleFunc("/interview/answer", b.requireAuth(b.handleInterviewAnswer))
 	mux.HandleFunc("/reset", b.requireAuth(b.handleReset))
 	mux.HandleFunc("/usage", b.requireAuth(b.handleUsage))
+	mux.HandleFunc("/signals", b.requireAuth(b.handleSignals))
+	mux.HandleFunc("/decisions", b.requireAuth(b.handleDecisions))
+	mux.HandleFunc("/watchdogs", b.requireAuth(b.handleWatchdogs))
 	mux.HandleFunc("/actions", b.requireAuth(b.handleActions))
 	mux.HandleFunc("/scheduler", b.requireAuth(b.handleScheduler))
+	mux.HandleFunc("/bridges", b.requireAuth(b.handleBridge))
 	mux.HandleFunc("/queue", b.requireAuth(b.handleQueue))
 	mux.HandleFunc("/v1/logs", b.requireAuth(b.handleOTLPLogs))
 
@@ -409,6 +473,30 @@ func (b *Broker) Actions() []officeActionLog {
 	return out
 }
 
+func (b *Broker) Signals() []officeSignalRecord {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]officeSignalRecord, len(b.signals))
+	copy(out, b.signals)
+	return out
+}
+
+func (b *Broker) Decisions() []officeDecisionRecord {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]officeDecisionRecord, len(b.decisions))
+	copy(out, b.decisions)
+	return out
+}
+
+func (b *Broker) Watchdogs() []watchdogAlert {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]watchdogAlert, len(b.watchdogs))
+	copy(out, b.watchdogs)
+	return out
+}
+
 func (b *Broker) Scheduler() []schedulerJob {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -418,9 +506,12 @@ func (b *Broker) Scheduler() []schedulerJob {
 }
 
 type queueSnapshot struct {
-	Actions   []officeActionLog `json:"actions"`
-	Scheduler []schedulerJob    `json:"scheduler"`
-	Due       []schedulerJob    `json:"due,omitempty"`
+	Actions   []officeActionLog      `json:"actions"`
+	Signals   []officeSignalRecord   `json:"signals,omitempty"`
+	Decisions []officeDecisionRecord `json:"decisions,omitempty"`
+	Watchdogs []watchdogAlert        `json:"watchdogs,omitempty"`
+	Scheduler []schedulerJob         `json:"scheduler"`
+	Due       []schedulerJob         `json:"due,omitempty"`
 }
 
 func (b *Broker) QueueSnapshot() queueSnapshot {
@@ -428,6 +519,9 @@ func (b *Broker) QueueSnapshot() queueSnapshot {
 	defer b.mu.Unlock()
 	return queueSnapshot{
 		Actions:   append([]officeActionLog(nil), b.actions...),
+		Signals:   append([]officeSignalRecord(nil), b.signals...),
+		Decisions: append([]officeDecisionRecord(nil), b.decisions...),
+		Watchdogs: append([]watchdogAlert(nil), b.watchdogs...),
 		Scheduler: append([]schedulerJob(nil), b.scheduler...),
 		Due:       append([]schedulerJob(nil), b.dueSchedulerJobsLocked(time.Now().UTC())...),
 	}
@@ -463,6 +557,9 @@ func (b *Broker) Reset() {
 	b.tasks = nil
 	b.requests = nil
 	b.actions = nil
+	b.signals = nil
+	b.decisions = nil
+	b.watchdogs = nil
 	b.scheduler = nil
 	b.pendingInterview = nil
 	b.counter = 0
@@ -500,6 +597,9 @@ func (b *Broker) loadState() error {
 	b.tasks = state.Tasks
 	b.requests = state.Requests
 	b.actions = state.Actions
+	b.signals = state.Signals
+	b.decisions = state.Decisions
+	b.watchdogs = state.Watchdogs
 	b.scheduler = state.Scheduler
 	b.counter = state.Counter
 	b.notificationSince = state.NotificationSince
@@ -520,7 +620,7 @@ func (b *Broker) loadState() error {
 
 func (b *Broker) saveLocked() error {
 	path := brokerStatePath()
-	if len(b.messages) == 0 && len(b.tasks) == 0 && len(activeRequests(b.requests)) == 0 && len(b.actions) == 0 && len(b.scheduler) == 0 && isDefaultChannelState(b.channels) && isDefaultOfficeMemberState(b.members) && b.counter == 0 && b.notificationSince == "" && b.insightsSince == "" && usageStateIsZero(b.usage) {
+	if len(b.messages) == 0 && len(b.tasks) == 0 && len(activeRequests(b.requests)) == 0 && len(b.actions) == 0 && len(b.signals) == 0 && len(b.decisions) == 0 && len(b.watchdogs) == 0 && len(b.scheduler) == 0 && isDefaultChannelState(b.channels) && isDefaultOfficeMemberState(b.members) && b.counter == 0 && b.notificationSince == "" && b.insightsSince == "" && usageStateIsZero(b.usage) {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
@@ -536,6 +636,9 @@ func (b *Broker) saveLocked() error {
 		Tasks:             b.tasks,
 		Requests:          b.requests,
 		Actions:           b.actions,
+		Signals:           b.signals,
+		Decisions:         b.decisions,
+		Watchdogs:         b.watchdogs,
 		Scheduler:         b.scheduler,
 		Counter:           b.counter,
 		NotificationSince: b.notificationSince,
@@ -781,6 +884,7 @@ func (b *Broker) normalizeLoadedStateLocked() {
 		if strings.TrimSpace(b.tasks[i].Channel) == "" {
 			b.tasks[i].Channel = "general"
 		}
+		normalizeTaskPlan(&b.tasks[i])
 		b.scheduleTaskLifecycleLocked(&b.tasks[i])
 	}
 	b.pendingInterview = firstBlockingRequest(b.requests)
@@ -1057,19 +1161,7 @@ func usageStateIsZero(state teamUsageState) bool {
 }
 
 func (b *Broker) appendActionLocked(kind, source, channel, actor, summary, relatedID string) {
-	b.actions = append(b.actions, officeActionLog{
-		ID:        fmt.Sprintf("action-%d", len(b.actions)+1),
-		Kind:      strings.TrimSpace(kind),
-		Source:    strings.TrimSpace(source),
-		Channel:   normalizeChannelSlug(channel),
-		Actor:     strings.TrimSpace(actor),
-		Summary:   strings.TrimSpace(summary),
-		RelatedID: strings.TrimSpace(relatedID),
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
-	})
-	if len(b.actions) > 100 {
-		b.actions = append([]officeActionLog(nil), b.actions[len(b.actions)-100:]...)
-	}
+	b.appendActionWithRefsLocked(kind, source, channel, actor, summary, relatedID, nil, "")
 }
 
 func (b *Broker) SetSchedulerJob(job schedulerJob) error {
@@ -1265,6 +1357,7 @@ func (b *Broker) scheduleTaskLifecycleLocked(task *teamTask) {
 	if task == nil {
 		return
 	}
+	normalizeTaskPlan(task)
 	taskChannel := normalizeChannelSlug(task.Channel)
 	if taskChannel == "" {
 		taskChannel = "general"
@@ -1279,6 +1372,7 @@ func (b *Broker) scheduleTaskLifecycleLocked(task *teamTask) {
 		task.RecheckAt = ""
 		task.DueAt = ""
 		b.completeSchedulerJobsLocked("task", task.ID, taskChannel)
+		b.resolveWatchdogAlertsLocked("task", task.ID, taskChannel)
 		return
 	}
 	switch strings.ToLower(strings.TrimSpace(task.Status)) {
@@ -1338,6 +1432,7 @@ func (b *Broker) scheduleRequestLifecycleLocked(req *humanInterview) {
 		req.RecheckAt = ""
 		req.FollowUpAt = ""
 		b.completeSchedulerJobsLocked("request", req.ID, reqChannel)
+		b.resolveWatchdogAlertsLocked("request", req.ID, reqChannel)
 		return
 	}
 	due := now.Add(time.Duration(reminderMinutes) * time.Minute)
@@ -1390,6 +1485,45 @@ func (b *Broker) handleUsage(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(usage)
 }
 
+func (b *Broker) handleSignals(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	b.mu.Lock()
+	signals := make([]officeSignalRecord, len(b.signals))
+	copy(signals, b.signals)
+	b.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"signals": signals})
+}
+
+func (b *Broker) handleDecisions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	b.mu.Lock()
+	decisions := make([]officeDecisionRecord, len(b.decisions))
+	copy(decisions, b.decisions)
+	b.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"decisions": decisions})
+}
+
+func (b *Broker) handleWatchdogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	b.mu.Lock()
+	alerts := make([]watchdogAlert, len(b.watchdogs))
+	copy(alerts, b.watchdogs)
+	b.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"watchdogs": alerts})
+}
+
 func (b *Broker) handleActions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1421,6 +1555,113 @@ func (b *Broker) handleScheduler(w http.ResponseWriter, r *http.Request) {
 	b.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"jobs": jobs})
+}
+
+func (b *Broker) handleBridge(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Actor         string   `json:"actor"`
+		SourceChannel string   `json:"source_channel"`
+		TargetChannel string   `json:"target_channel"`
+		Summary       string   `json:"summary"`
+		Tagged        []string `json:"tagged"`
+		ReplyTo       string   `json:"reply_to"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	actor := normalizeActorSlug(body.Actor)
+	if actor != "ceo" {
+		http.Error(w, "only the CEO can bridge channel context", http.StatusForbidden)
+		return
+	}
+	source := normalizeChannelSlug(body.SourceChannel)
+	target := normalizeChannelSlug(body.TargetChannel)
+	if source == "" || target == "" {
+		http.Error(w, "source_channel and target_channel required", http.StatusBadRequest)
+		return
+	}
+	summary := strings.TrimSpace(body.Summary)
+	if summary == "" {
+		http.Error(w, "summary required", http.StatusBadRequest)
+		return
+	}
+
+	b.mu.Lock()
+	sourceExists := b.findChannelLocked(source) != nil
+	targetExists := b.findChannelLocked(target) != nil
+	b.mu.Unlock()
+	if !sourceExists || !targetExists {
+		http.Error(w, "channel not found", http.StatusNotFound)
+		return
+	}
+
+	records, err := b.RecordSignals([]officeSignal{{
+		ID:         fmt.Sprintf("bridge:%s:%s:%s", source, target, truncateSummary(strings.ToLower(summary), 48)),
+		Source:     "channel_bridge",
+		Kind:       "bridge",
+		Title:      "Cross-channel bridge",
+		Content:    fmt.Sprintf("CEO bridged context from #%s to #%s: %s", source, target, summary),
+		Channel:    target,
+		Owner:      "ceo",
+		Confidence: "explicit",
+		Urgency:    "normal",
+	}})
+	if err != nil {
+		http.Error(w, "failed to record bridge signal", http.StatusInternalServerError)
+		return
+	}
+	signalIDs := make([]string, 0, len(records))
+	for _, record := range records {
+		signalIDs = append(signalIDs, record.ID)
+	}
+	decision, err := b.RecordDecision(
+		"bridge_channel",
+		target,
+		fmt.Sprintf("CEO bridged context from #%s to #%s.", source, target),
+		"Relevant context existed in another channel, so the CEO carried it into this channel explicitly.",
+		"ceo",
+		signalIDs,
+		false,
+		false,
+	)
+	if err != nil {
+		http.Error(w, "failed to record bridge decision", http.StatusInternalServerError)
+		return
+	}
+	content := summary + fmt.Sprintf("\n\nCEO bridged this context from #%s to help #%s.", source, target)
+	msg, _, err := b.PostAutomationMessage(
+		"wuphf",
+		target,
+		"Bridge from #"+source,
+		content,
+		decision.ID,
+		"ceo_bridge",
+		"CEO bridge",
+		uniqueSlugs(body.Tagged),
+		strings.TrimSpace(body.ReplyTo),
+	)
+	if err != nil {
+		http.Error(w, "failed to persist bridge message", http.StatusInternalServerError)
+		return
+	}
+	if err := b.RecordAction("bridge_channel", "ceo_bridge", target, actor, truncateSummary(summary, 140), msg.ID, signalIDs, decision.ID); err != nil {
+		http.Error(w, "failed to persist bridge action", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"id":          msg.ID,
+		"decision_id": decision.ID,
+		"signal_ids":  signalIDs,
+	})
 }
 
 func (b *Broker) handleQueue(w http.ResponseWriter, r *http.Request) {
@@ -2434,14 +2675,22 @@ func (b *Broker) handleGetTasks(w http.ResponseWriter, r *http.Request) {
 
 func (b *Broker) handlePostTask(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Action    string `json:"action"`
-		Channel   string `json:"channel"`
-		ID        string `json:"id"`
-		Title     string `json:"title"`
-		Details   string `json:"details"`
-		Owner     string `json:"owner"`
-		CreatedBy string `json:"created_by"`
-		ThreadID  string `json:"thread_id"`
+		Action           string `json:"action"`
+		Channel          string `json:"channel"`
+		ID               string `json:"id"`
+		Title            string `json:"title"`
+		Details          string `json:"details"`
+		Owner            string `json:"owner"`
+		CreatedBy        string `json:"created_by"`
+		ThreadID         string `json:"thread_id"`
+		TaskType         string `json:"task_type"`
+		PipelineID       string `json:"pipeline_id"`
+		ExecutionMode    string `json:"execution_mode"`
+		ReviewState      string `json:"review_state"`
+		SourceSignalID   string `json:"source_signal_id"`
+		SourceDecisionID string `json:"source_decision_id"`
+		WorktreePath     string `json:"worktree_path"`
+		WorktreeBranch   string `json:"worktree_branch"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -2479,6 +2728,30 @@ func (b *Broker) handlePostTask(w http.ResponseWriter, r *http.Request) {
 				existing.Owner = owner
 				existing.Status = "in_progress"
 			}
+			if taskType := strings.TrimSpace(body.TaskType); taskType != "" {
+				existing.TaskType = taskType
+			}
+			if pipelineID := strings.TrimSpace(body.PipelineID); pipelineID != "" {
+				existing.PipelineID = pipelineID
+			}
+			if executionMode := strings.TrimSpace(body.ExecutionMode); executionMode != "" {
+				existing.ExecutionMode = executionMode
+			}
+			if reviewState := strings.TrimSpace(body.ReviewState); reviewState != "" {
+				existing.ReviewState = reviewState
+			}
+			if sourceSignalID := strings.TrimSpace(body.SourceSignalID); sourceSignalID != "" {
+				existing.SourceSignalID = sourceSignalID
+			}
+			if sourceDecisionID := strings.TrimSpace(body.SourceDecisionID); sourceDecisionID != "" {
+				existing.SourceDecisionID = sourceDecisionID
+			}
+			if worktreePath := strings.TrimSpace(body.WorktreePath); worktreePath != "" {
+				existing.WorktreePath = worktreePath
+			}
+			if worktreeBranch := strings.TrimSpace(body.WorktreeBranch); worktreeBranch != "" {
+				existing.WorktreeBranch = worktreeBranch
+			}
 			if existing.ThreadID == "" && strings.TrimSpace(body.ThreadID) != "" {
 				existing.ThreadID = strings.TrimSpace(body.ThreadID)
 			}
@@ -2495,16 +2768,24 @@ func (b *Broker) handlePostTask(w http.ResponseWriter, r *http.Request) {
 		}
 		b.counter++
 		task := teamTask{
-			ID:        fmt.Sprintf("task-%d", b.counter),
-			Channel:   channel,
-			Title:     strings.TrimSpace(body.Title),
-			Details:   strings.TrimSpace(body.Details),
-			Owner:     strings.TrimSpace(body.Owner),
-			Status:    "open",
-			CreatedBy: strings.TrimSpace(body.CreatedBy),
-			ThreadID:  strings.TrimSpace(body.ThreadID),
-			CreatedAt: now,
-			UpdatedAt: now,
+			ID:               fmt.Sprintf("task-%d", b.counter),
+			Channel:          channel,
+			Title:            strings.TrimSpace(body.Title),
+			Details:          strings.TrimSpace(body.Details),
+			Owner:            strings.TrimSpace(body.Owner),
+			Status:           "open",
+			CreatedBy:        strings.TrimSpace(body.CreatedBy),
+			ThreadID:         strings.TrimSpace(body.ThreadID),
+			TaskType:         strings.TrimSpace(body.TaskType),
+			PipelineID:       strings.TrimSpace(body.PipelineID),
+			ExecutionMode:    strings.TrimSpace(body.ExecutionMode),
+			ReviewState:      strings.TrimSpace(body.ReviewState),
+			SourceSignalID:   strings.TrimSpace(body.SourceSignalID),
+			SourceDecisionID: strings.TrimSpace(body.SourceDecisionID),
+			WorktreePath:     strings.TrimSpace(body.WorktreePath),
+			WorktreeBranch:   strings.TrimSpace(body.WorktreeBranch),
+			CreatedAt:        now,
+			UpdatedAt:        now,
 		}
 		if task.Owner != "" {
 			task.Status = "in_progress"
@@ -2537,8 +2818,24 @@ func (b *Broker) handlePostTask(w http.ResponseWriter, r *http.Request) {
 			}
 			task.Owner = strings.TrimSpace(body.Owner)
 			task.Status = "in_progress"
+			if taskNeedsStructuredReview(task) && strings.TrimSpace(task.ReviewState) == "" {
+				task.ReviewState = "pending_review"
+			}
 		case "complete":
+			if taskNeedsStructuredReview(task) {
+				task.Status = "review"
+				task.ReviewState = "ready_for_review"
+			} else {
+				task.Status = "done"
+			}
+		case "review":
+			task.Status = "review"
+			task.ReviewState = "ready_for_review"
+		case "approve":
 			task.Status = "done"
+			if taskNeedsStructuredReview(task) {
+				task.ReviewState = "approved"
+			}
 		case "block":
 			task.Status = "blocked"
 		case "release":
@@ -2550,6 +2847,30 @@ func (b *Broker) handlePostTask(w http.ResponseWriter, r *http.Request) {
 		}
 		if strings.TrimSpace(body.Details) != "" {
 			task.Details = strings.TrimSpace(body.Details)
+		}
+		if taskType := strings.TrimSpace(body.TaskType); taskType != "" {
+			task.TaskType = taskType
+		}
+		if pipelineID := strings.TrimSpace(body.PipelineID); pipelineID != "" {
+			task.PipelineID = pipelineID
+		}
+		if executionMode := strings.TrimSpace(body.ExecutionMode); executionMode != "" {
+			task.ExecutionMode = executionMode
+		}
+		if reviewState := strings.TrimSpace(body.ReviewState); reviewState != "" {
+			task.ReviewState = reviewState
+		}
+		if sourceSignalID := strings.TrimSpace(body.SourceSignalID); sourceSignalID != "" {
+			task.SourceSignalID = sourceSignalID
+		}
+		if sourceDecisionID := strings.TrimSpace(body.SourceDecisionID); sourceDecisionID != "" {
+			task.SourceDecisionID = sourceDecisionID
+		}
+		if worktreePath := strings.TrimSpace(body.WorktreePath); worktreePath != "" {
+			task.WorktreePath = worktreePath
+		}
+		if worktreeBranch := strings.TrimSpace(body.WorktreeBranch); worktreeBranch != "" {
+			task.WorktreeBranch = worktreeBranch
 		}
 		task.UpdatedAt = now
 		b.scheduleTaskLifecycleLocked(task)
@@ -2618,6 +2939,103 @@ func (b *Broker) EnsureTask(channel, title, details, owner, createdBy, threadID 
 	b.scheduleTaskLifecycleLocked(&task)
 	b.tasks = append(b.tasks, task)
 	b.appendActionLocked("task_created", "office", channel, createdBy, truncateSummary(task.Title, 140), task.ID)
+	if err := b.saveLocked(); err != nil {
+		return teamTask{}, false, err
+	}
+	return task, false, nil
+}
+
+type plannedTaskInput struct {
+	Channel          string
+	Title            string
+	Details          string
+	Owner            string
+	CreatedBy        string
+	ThreadID         string
+	TaskType         string
+	PipelineID       string
+	ExecutionMode    string
+	ReviewState      string
+	SourceSignalID   string
+	SourceDecisionID string
+}
+
+func (b *Broker) EnsurePlannedTask(input plannedTaskInput) (teamTask, bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	channel := normalizeChannelSlug(input.Channel)
+	if channel == "" {
+		channel = "general"
+	}
+	if b.findChannelLocked(channel) == nil {
+		return teamTask{}, false, fmt.Errorf("channel not found")
+	}
+	if !b.canAccessChannelLocked(input.CreatedBy, channel) {
+		return teamTask{}, false, fmt.Errorf("channel access denied")
+	}
+	title := strings.TrimSpace(input.Title)
+	if existing := b.findReusableTaskLocked(channel, title, strings.TrimSpace(input.ThreadID), strings.TrimSpace(input.Owner)); existing != nil {
+		if existing.Details == "" && strings.TrimSpace(input.Details) != "" {
+			existing.Details = strings.TrimSpace(input.Details)
+		}
+		if existing.Owner == "" && strings.TrimSpace(input.Owner) != "" {
+			existing.Owner = strings.TrimSpace(input.Owner)
+			existing.Status = "in_progress"
+		}
+		if existing.ThreadID == "" && strings.TrimSpace(input.ThreadID) != "" {
+			existing.ThreadID = strings.TrimSpace(input.ThreadID)
+		}
+		if existing.TaskType == "" && strings.TrimSpace(input.TaskType) != "" {
+			existing.TaskType = strings.TrimSpace(input.TaskType)
+		}
+		if existing.PipelineID == "" && strings.TrimSpace(input.PipelineID) != "" {
+			existing.PipelineID = strings.TrimSpace(input.PipelineID)
+		}
+		if existing.ExecutionMode == "" && strings.TrimSpace(input.ExecutionMode) != "" {
+			existing.ExecutionMode = strings.TrimSpace(input.ExecutionMode)
+		}
+		if existing.ReviewState == "" && strings.TrimSpace(input.ReviewState) != "" {
+			existing.ReviewState = strings.TrimSpace(input.ReviewState)
+		}
+		if existing.SourceSignalID == "" && strings.TrimSpace(input.SourceSignalID) != "" {
+			existing.SourceSignalID = strings.TrimSpace(input.SourceSignalID)
+		}
+		if existing.SourceDecisionID == "" && strings.TrimSpace(input.SourceDecisionID) != "" {
+			existing.SourceDecisionID = strings.TrimSpace(input.SourceDecisionID)
+		}
+		existing.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		b.scheduleTaskLifecycleLocked(existing)
+		if err := b.saveLocked(); err != nil {
+			return teamTask{}, false, err
+		}
+		return *existing, true, nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	task := teamTask{
+		ID:               fmt.Sprintf("task-%d", b.counter+1),
+		Channel:          channel,
+		Title:            title,
+		Details:          strings.TrimSpace(input.Details),
+		Owner:            strings.TrimSpace(input.Owner),
+		Status:           "open",
+		CreatedBy:        strings.TrimSpace(input.CreatedBy),
+		ThreadID:         strings.TrimSpace(input.ThreadID),
+		TaskType:         strings.TrimSpace(input.TaskType),
+		PipelineID:       strings.TrimSpace(input.PipelineID),
+		ExecutionMode:    strings.TrimSpace(input.ExecutionMode),
+		ReviewState:      strings.TrimSpace(input.ReviewState),
+		SourceSignalID:   strings.TrimSpace(input.SourceSignalID),
+		SourceDecisionID: strings.TrimSpace(input.SourceDecisionID),
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	b.counter++
+	if task.Owner != "" {
+		task.Status = "in_progress"
+	}
+	b.scheduleTaskLifecycleLocked(&task)
+	b.tasks = append(b.tasks, task)
+	b.appendActionWithRefsLocked("task_created", "office", channel, input.CreatedBy, truncateSummary(task.Title, 140), task.ID, compactStringList([]string{task.SourceSignalID}), task.SourceDecisionID)
 	if err := b.saveLocked(); err != nil {
 		return teamTask{}, false, err
 	}

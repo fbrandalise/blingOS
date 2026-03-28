@@ -358,6 +358,8 @@ func taskStatusPill(status string) string {
 	switch status {
 	case "in_progress":
 		return accentPill("moving", "#D97706")
+	case "review":
+		return accentPill("review", "#2563EB")
 	case "blocked":
 		return accentPill("blocked", "#B91C1C")
 	case "done":

@@ -248,6 +248,7 @@ func (l *Launcher) Launch() error {
 	go l.notifyTaskActionsLoop()
 	go l.pollNexNotificationsLoop()
 	go l.pollNexInsightsLoop()
+	go l.watchdogSchedulerLoop()
 
 	return nil
 }
@@ -276,9 +277,52 @@ func (l *Launcher) notifyAgentsLoop() {
 		lastCount = len(msgs)
 
 		for _, msg := range newMsgs {
+			l.persistHumanDirective(msg)
 			l.deliverMessageNotification(msg)
 		}
 	}
+}
+
+func (l *Launcher) persistHumanDirective(msg channelMessage) {
+	if l.broker == nil {
+		return
+	}
+	signal, ok := buildHumanDirectiveSignal(msg)
+	if !ok {
+		return
+	}
+	records, err := l.broker.RecordSignals([]officeSignal{signal})
+	if err != nil || len(records) == 0 {
+		return
+	}
+	signalIDs := make([]string, 0, len(records))
+	for _, record := range records {
+		signalIDs = append(signalIDs, record.ID)
+	}
+	plan := planHumanDirective(msg)
+	decision, err := l.broker.RecordDecision(
+		plan.DecisionKind,
+		signal.Channel,
+		plan.Summary,
+		plan.DecisionReason,
+		"ceo",
+		signalIDs,
+		false,
+		false,
+	)
+	if err != nil {
+		return
+	}
+	_ = l.broker.RecordAction(
+		"human_directive",
+		"human",
+		signal.Channel,
+		msg.From,
+		truncate(plan.Summary, 140),
+		msg.ID,
+		signalIDs,
+		decision.ID,
+	)
 }
 
 func (l *Launcher) notifyTaskActionsLoop() {
@@ -420,13 +464,13 @@ func (l *Launcher) taskNotificationTargets(action officeActionLog, task teamTask
 	// Assigned owners should start immediately when new work lands, especially
 	// for CEO-created or automation-created tasks. This is the bridge between
 	// "policy created work" and "the specialist actually begins moving."
-	if action.Kind == "task_created" && owner != actor {
+	if (action.Kind == "task_created" || action.Kind == "watchdog_alert") && owner != actor {
 		addImmediate(owner)
 	} else if owner != actor {
 		addDelayed(owner)
 	}
 
-	if lead != "" && lead != owner && lead != actor {
+	if lead != "" && lead != owner && lead != actor && !(action.Kind == "task_created" && actor == lead) {
 		addImmediate(lead)
 	}
 
@@ -483,6 +527,8 @@ func (l *Launcher) taskNotificationContent(action officeActionLog, task teamTask
 		verb = "Task created"
 	case "task_updated":
 		verb = "Task updated"
+	case "watchdog_alert":
+		verb = "Watchdog reminder"
 	}
 	owner := strings.TrimSpace(task.Owner)
 	if owner == "" {
@@ -498,7 +544,19 @@ func (l *Launcher) taskNotificationContent(action officeActionLog, task teamTask
 	if details != "" {
 		details = " — " + truncate(details, 120)
 	}
-	return fmt.Sprintf("[%s #%s on #%s]: %s%s (owner %s, status %s). Before you speak, call team_poll and team_tasks, confirm whether you own this work, and stay in your lane.", verb, task.ID, channel, task.Title, details, owner, status)
+	pipeline := ""
+	if strings.TrimSpace(task.PipelineStage) != "" {
+		pipeline = ", stage " + task.PipelineStage
+	}
+	review := ""
+	if strings.TrimSpace(task.ReviewState) != "" && task.ReviewState != "not_required" {
+		review = ", review " + task.ReviewState
+	}
+	execMode := ""
+	if strings.TrimSpace(task.ExecutionMode) != "" {
+		execMode = ", execution " + task.ExecutionMode
+	}
+	return fmt.Sprintf("[%s #%s on #%s]: %s%s (owner %s, status %s%s%s%s). Before you speak, call team_poll and team_tasks, confirm whether you own this work, and stay in your lane.", verb, task.ID, channel, task.Title, details, owner, status, pipeline, review, execMode)
 }
 
 func (l *Launcher) sendTaskUpdate(paneIdx int, slug, channel, taskID, from, content string) {
@@ -960,6 +1018,140 @@ func (l *Launcher) updateSchedulerJob(slug, label string, interval time.Duration
 	_ = l.broker.SetSchedulerJob(job)
 }
 
+func (l *Launcher) watchdogSchedulerLoop() {
+	if l.broker == nil {
+		return
+	}
+	time.Sleep(15 * time.Second)
+	for {
+		l.processDueSchedulerJobs()
+		time.Sleep(20 * time.Second)
+	}
+}
+
+func (l *Launcher) processDueSchedulerJobs() {
+	if l.broker == nil {
+		return
+	}
+	jobs := l.broker.DueSchedulerJobs()
+	if len(jobs) == 0 {
+		return
+	}
+	for _, job := range jobs {
+		switch strings.TrimSpace(job.TargetType) {
+		case "task":
+			l.processDueTaskJob(job)
+		case "request":
+			l.processDueRequestJob(job)
+		default:
+			nextRun := time.Now().UTC().Add(time.Duration(config.ResolveTaskReminderInterval()) * time.Minute)
+			_ = l.broker.UpdateSchedulerJobState(job.Slug, nextRun, "scheduled")
+		}
+	}
+}
+
+func (l *Launcher) processDueTaskJob(job schedulerJob) {
+	task, ok := l.broker.FindTask(job.Channel, job.TargetID)
+	if !ok || strings.EqualFold(strings.TrimSpace(task.Status), "done") {
+		_ = l.broker.UpdateSchedulerJobState(job.Slug, time.Time{}, "done")
+		return
+	}
+	alertKind := "task_stalled"
+	summary := fmt.Sprintf("Task %s in #%s is still waiting for movement.", task.Title, normalizeChannelSlug(task.Channel))
+	if strings.TrimSpace(task.Owner) == "" {
+		alertKind = "task_unclaimed"
+		summary = fmt.Sprintf("Task %s in #%s still has no owner.", task.Title, normalizeChannelSlug(task.Channel))
+	} else {
+		summary = fmt.Sprintf("@%s still needs to move %s in #%s.", task.Owner, task.Title, normalizeChannelSlug(task.Channel))
+	}
+	_, _, _ = l.broker.CreateWatchdogAlert(alertKind, task.Channel, "task", task.ID, task.Owner, summary)
+	signalIDs, decisionID := l.recordWatchdogLedger(task.Channel, alertKind, task.ID, task.Owner, summary, task.SourceSignalID)
+	_ = l.broker.RecordAction("watchdog_alert", "watchdog", task.Channel, "watchdog", truncate(summary, 140), task.ID, signalIDs, decisionID)
+	l.deliverTaskNotification(officeActionLog{
+		Kind:      "watchdog_alert",
+		Source:    "watchdog",
+		Channel:   task.Channel,
+		Actor:     "watchdog",
+		RelatedID: task.ID,
+	}, task)
+	nextRun := time.Now().UTC().Add(time.Duration(config.ResolveTaskReminderInterval()) * time.Minute)
+	_ = l.broker.UpdateSchedulerJobState(job.Slug, nextRun, "scheduled")
+}
+
+func (l *Launcher) processDueRequestJob(job schedulerJob) {
+	req, ok := l.broker.FindRequest(job.Channel, job.TargetID)
+	if !ok || !requestIsActive(req) {
+		_ = l.broker.UpdateSchedulerJobState(job.Slug, time.Time{}, "done")
+		return
+	}
+	summary := fmt.Sprintf("Still waiting on %s in #%s: %s", req.TitleOrDefault(), normalizeChannelSlug(req.Channel), truncate(req.Question, 120))
+	alert, existing, _ := l.broker.CreateWatchdogAlert("request_waiting", req.Channel, "request", req.ID, req.From, summary)
+	signalIDs, decisionID := l.recordWatchdogLedger(req.Channel, "request_waiting", req.ID, req.From, summary, "")
+	_ = l.broker.RecordAction("watchdog_alert", "watchdog", req.Channel, "watchdog", truncate(summary, 140), req.ID, signalIDs, decisionID)
+	if req.Blocking && !existing {
+		_, _, _ = l.broker.PostAutomationMessage(
+			"wuphf",
+			req.Channel,
+			"Waiting on human decision",
+			summary,
+			alert.ID,
+			"watchdog",
+			"Office watchdog",
+			[]string{"ceo"},
+			req.ReplyTo,
+		)
+	}
+	nextRun := time.Now().UTC().Add(time.Duration(config.ResolveTaskReminderInterval()) * time.Minute)
+	_ = l.broker.UpdateSchedulerJobState(job.Slug, nextRun, "scheduled")
+}
+
+func (l *Launcher) recordWatchdogLedger(channel, kind, targetID, owner, summary, sourceSignalID string) ([]string, string) {
+	if l.broker == nil {
+		return nil, ""
+	}
+	signal, err := l.broker.RecordSignals([]officeSignal{{
+		ID:         strings.TrimSpace(kind) + "::" + strings.TrimSpace(targetID),
+		Source:     "watchdog",
+		Kind:       strings.TrimSpace(kind),
+		Title:      "Office watchdog",
+		Content:    strings.TrimSpace(summary),
+		Channel:    channel,
+		Owner:      strings.TrimSpace(owner),
+		Confidence: "high",
+		Urgency:    "high",
+	}})
+	if err != nil || len(signal) == 0 {
+		return compactStringList([]string{sourceSignalID}), ""
+	}
+	signalIDs := make([]string, 0, len(signal)+1)
+	signalIDs = append(signalIDs, compactStringList([]string{sourceSignalID})...)
+	for _, record := range signal {
+		signalIDs = append(signalIDs, record.ID)
+	}
+	decisionKind := "remind_owner"
+	decisionReason := "The watchdog detected owned work with no visible movement, so the office should remind the current owner."
+	decisionOwner := strings.TrimSpace(owner)
+	requiresHuman := false
+	blocking := false
+	if decisionOwner == "" {
+		decisionKind = "escalate_to_ceo"
+		decisionReason = "The watchdog detected work without a live owner, so the CEO should re-triage it."
+		decisionOwner = "ceo"
+	}
+	if kind == "request_waiting" {
+		decisionKind = "ask_human"
+		decisionReason = "The watchdog detected a pending human decision that is still blocking the office."
+		decisionOwner = "ceo"
+		requiresHuman = true
+		blocking = true
+	}
+	decision, err := l.broker.RecordDecision(decisionKind, channel, summary, decisionReason, decisionOwner, signalIDs, requiresHuman, blocking)
+	if err != nil {
+		return signalIDs, ""
+	}
+	return signalIDs, decision.ID
+}
+
 func (l *Launcher) fetchAndPostNexInsights(client *api.Client) {
 	if l.broker == nil {
 		return
@@ -985,20 +1177,7 @@ func (l *Launcher) fetchAndPostNexInsights(client *api.Client) {
 		_ = l.broker.SetInsightsCursor(now.Format(time.RFC3339Nano))
 		return
 	}
-
-	plan := planOfficeActions(signals)
-	msg, err := l.broker.PostMessage("ceo", "general", plan.Summary, plan.Tagged, "")
-	if err != nil {
-		return
-	}
-	for _, task := range plan.Tasks {
-		_, _, _ = l.broker.EnsureTask("general", task.Title, task.Details, task.Owner, "ceo", msg.ID)
-	}
-	for _, req := range plan.Requests {
-		if _, err := l.broker.CreateRequest(req); err != nil {
-			continue
-		}
-	}
+	l.persistOfficeSignals("general", signals)
 	_ = l.broker.SetInsightsCursor(now.Format(time.RFC3339Nano))
 }
 
@@ -1116,29 +1295,83 @@ func (l *Launcher) fetchAndIngestNexNotifications(client *api.Client) {
 
 	latest := l.broker.NotificationCursor()
 	signals := buildNotificationSignals(result.Items)
-	for i, signal := range signals {
+	for i := range signals {
 		item := result.Items[i]
 		if item.SentAt != "" && (latest == "" || item.SentAt > latest) {
 			latest = item.SentAt
 		}
-		_, _, err := l.broker.PostAutomationMessage(
-			"wuphf",
-			signal.Channel,
-			signal.Title,
-			signal.Content,
-			signal.ID,
-			"context_graph",
-			"Nex",
-			[]string{"ceo"},
-			"",
-		)
-		if err != nil {
-			return
-		}
 	}
+	l.persistOfficeSignals("general", signals)
 
 	if latest != "" {
 		_ = l.broker.SetNotificationCursor(latest)
+	}
+}
+
+func (l *Launcher) persistOfficeSignals(channel string, signals []officeSignal) {
+	if l.broker == nil || len(signals) == 0 {
+		return
+	}
+	records, err := l.broker.RecordSignals(signals)
+	if err != nil || len(records) == 0 {
+		return
+	}
+	plan := planOfficeActions(signals)
+	signalIDs := make([]string, 0, len(records))
+	for _, record := range records {
+		signalIDs = append(signalIDs, record.ID)
+	}
+	requiresHuman := false
+	blocking := false
+	for _, req := range plan.Requests {
+		requiresHuman = true
+		if req.Blocking {
+			blocking = true
+		}
+	}
+	owner := "ceo"
+	if len(plan.Tagged) == 1 {
+		owner = plan.Tagged[0]
+	}
+	decision, err := l.broker.RecordDecision(plan.DecisionKind, channel, plan.Summary, plan.DecisionReason, owner, signalIDs, requiresHuman, blocking)
+	if err != nil {
+		return
+	}
+	msg, _, err := l.broker.PostAutomationMessage(
+		"wuphf",
+		channel,
+		"Office decision",
+		plan.Summary,
+		decision.ID,
+		"policy_engine",
+		"Office policy",
+		plan.Tagged,
+		"",
+	)
+	if err != nil {
+		return
+	}
+	_ = l.broker.RecordAction("decision_posted", "policy_engine", channel, "ceo", truncate(plan.Summary, 140), msg.ID, signalIDs, decision.ID)
+	firstSignalID := ""
+	if len(signalIDs) > 0 {
+		firstSignalID = signalIDs[0]
+	}
+	for _, task := range plan.Tasks {
+		_, _, _ = l.broker.EnsurePlannedTask(plannedTaskInput{
+			Channel:          channel,
+			Title:            task.Title,
+			Details:          task.Details,
+			Owner:            task.Owner,
+			CreatedBy:        "ceo",
+			ThreadID:         msg.ID,
+			SourceSignalID:   firstSignalID,
+			SourceDecisionID: decision.ID,
+		})
+	}
+	for _, req := range plan.Requests {
+		if _, err := l.broker.CreateRequest(req); err != nil {
+			continue
+		}
 	}
 }
 
@@ -1173,6 +1406,13 @@ func formatNexFeedItem(item nexFeedItem) (string, string) {
 	}
 
 	return title, strings.Join(lines, "\n")
+}
+
+func (req humanInterview) TitleOrDefault() string {
+	if strings.TrimSpace(req.Title) != "" {
+		return req.Title
+	}
+	return "Request"
 }
 
 func humanizeNotificationType(kind string) string {
@@ -1610,8 +1850,10 @@ func (l *Launcher) buildPrompt(slug string) string {
 		sb.WriteString("- team_office_members: See the full office roster, including members outside the current channel\n")
 		sb.WriteString("- team_channels: See every office channel, what it is for, and who is in it\n")
 		sb.WriteString("- team_channel: Create or remove a channel when the human explicitly wants that structure. New channels need a clear description and an initial roster.\n")
+		sb.WriteString("- team_bridge: Carry relevant context from one channel into another with a visible CEO bridge trail\n")
 		sb.WriteString("- team_member: Create or remove office-wide members when the human explicitly asks to expand the team\n")
 		sb.WriteString("- team_channel_member: Add, remove, disable, or enable agents in a channel\n")
+		sb.WriteString("- team_bridge: CEO-only bridge that carries relevant context from one channel into another with a visible trail\n")
 		sb.WriteString("- team_tasks: See current owned/unowned work so the team does not duplicate effort\n")
 		sb.WriteString("- team_task: Create and assign tasks so ownership is explicit\n")
 		sb.WriteString("- team_requests: See open human requests before asking again\n")
@@ -1664,7 +1906,8 @@ func (l *Launcher) buildPrompt(slug string) string {
 			"and personality that fits the Office vibe), then add them to the relevant channel with team_channel_member. Announce who you hired and why.\n")
 		sb.WriteString("16. Default to using the current team and current channel for normal work. Only create new channels or agents when the scope genuinely warrants it.\n\n")
 		sb.WriteString("17. You are present in every channel by default. You have full cross-channel context and are responsible for deciding when work in one channel should be carried into another.\n")
-		sb.WriteString("18. If a teammate asks whether another channel might help, inspect the channel descriptions, use your judgment, and bridge the conversation yourself when it is warranted.\n\n")
+		sb.WriteString("18. If another channel clearly has relevant context, use team_bridge so the source channel, target channel, and your bridge decision stay visible.\n")
+		sb.WriteString("19. If a teammate asks whether another channel might help, inspect the channel descriptions, use your judgment, and bridge the conversation yourself when it is warranted.\n\n")
 		sb.WriteString("VISUALIZATION:\n")
 		sb.WriteString("When sharing structured data, make it visual and scannable:\n")
 		sb.WriteString("- Task breakdowns → checklists\n")
@@ -1714,6 +1957,7 @@ func (l *Launcher) buildPrompt(slug string) string {
 		sb.WriteString("- team_channel: Create or remove a channel when the human explicitly wants that structure. New channels need a clear description and an initial roster.\n")
 		sb.WriteString("- team_member: Create or remove office-wide members when the human explicitly asks to expand the team\n")
 		sb.WriteString("- team_channel_member: Add, remove, disable, or enable agents in a channel\n")
+		sb.WriteString("- team_bridge: CEO-only bridge for carrying context from one channel into another. Ask the CEO to use it when needed.\n")
 		sb.WriteString("- team_tasks: See the current task list and ownership before you jump in\n")
 		sb.WriteString("- team_task: Claim, complete, block, or release tasks in your domain\n")
 		sb.WriteString("- team_requests: See open human requests so you do not duplicate them\n")

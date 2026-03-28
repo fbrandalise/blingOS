@@ -493,3 +493,184 @@ func TestTaskNotificationContentIncludesOwnershipAndGuidance(t *testing.T) {
 		t.Fatalf("expected routing guidance in content: %q", got)
 	}
 }
+
+func TestTaskNotificationTargetsWakeOwnerOnWatchdog(t *testing.T) {
+	l := &Launcher{
+		broker: &Broker{
+			channels: []teamChannel{{
+				Slug:    "general",
+				Name:    "general",
+				Members: []string{"ceo", "fe"},
+			}},
+		},
+	}
+	l.broker.ensureDefaultOfficeMembersLocked()
+	task := teamTask{
+		ID:      "task-1",
+		Channel: "general",
+		Title:   "Build signup conversion fix",
+		Owner:   "fe",
+		Status:  "in_progress",
+	}
+
+	immediate, delayed := l.taskNotificationTargets(officeActionLog{
+		Kind:      "watchdog_alert",
+		Actor:     "watchdog",
+		Channel:   "general",
+		RelatedID: "task-1",
+	}, task)
+	if !containsNotificationTarget(immediate, "ceo") || !containsNotificationTarget(immediate, "fe") {
+		t.Fatalf("expected watchdog to wake CEO and owner immediately, got %+v", immediate)
+	}
+	if len(delayed) != 0 {
+		t.Fatalf("expected no delayed watchdog targets, got %+v", delayed)
+	}
+}
+
+func TestTaskNotificationTargetsDoNotRewakeCEOForOwnCreatedTask(t *testing.T) {
+	l := &Launcher{
+		broker: &Broker{
+			channels: []teamChannel{{
+				Slug:    "general",
+				Name:    "general",
+				Members: []string{"ceo", "fe"},
+			}},
+		},
+	}
+	l.broker.ensureDefaultOfficeMembersLocked()
+	task := teamTask{
+		ID:      "task-2",
+		Channel: "general",
+		Title:   "Build signup conversion fix",
+		Owner:   "fe",
+		Status:  "in_progress",
+	}
+
+	immediate, delayed := l.taskNotificationTargets(officeActionLog{
+		Kind:      "task_created",
+		Actor:     "ceo",
+		Channel:   "general",
+		RelatedID: "task-2",
+	}, task)
+	if !containsNotificationTarget(immediate, "fe") {
+		t.Fatalf("expected owner wake, got %+v", immediate)
+	}
+	if containsNotificationTarget(immediate, "ceo") {
+		t.Fatalf("expected CEO not to be re-notified for its own created task, got %+v", immediate)
+	}
+	if len(delayed) != 0 {
+		t.Fatalf("expected no delayed notifications, got %+v", delayed)
+	}
+}
+
+func TestPersistHumanDirectiveRecordsLedger(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	b := NewBroker()
+	l := &Launcher{broker: b}
+	msg := channelMessage{
+		ID:      "msg-1",
+		From:    "you",
+		Channel: "general",
+		Content: "CEO, give me the office state and ask PM for a v1 scope.",
+		Tagged:  []string{"ceo", "pm"},
+	}
+
+	l.persistHumanDirective(msg)
+
+	if got := len(b.Signals()); got != 1 {
+		t.Fatalf("expected 1 signal, got %d", got)
+	}
+	if got := len(b.Decisions()); got != 1 {
+		t.Fatalf("expected 1 decision, got %d", got)
+	}
+	if got := len(b.Actions()); got != 1 {
+		t.Fatalf("expected 1 action, got %d", got)
+	}
+	if sig := b.Signals()[0]; sig.Source != "human_directive" || sig.SourceRef != "msg-1" {
+		t.Fatalf("unexpected human directive signal: %+v", sig)
+	}
+	if decision := b.Decisions()[0]; decision.Kind == "" || decision.Owner != "ceo" {
+		t.Fatalf("unexpected human directive decision: %+v", decision)
+	}
+	if action := b.Actions()[0]; action.Kind != "human_directive" || action.DecisionID == "" || len(action.SignalIDs) == 0 {
+		t.Fatalf("unexpected human directive action: %+v", action)
+	}
+
+	l.persistHumanDirective(msg)
+	if got := len(b.Signals()); got != 1 {
+		t.Fatalf("expected deduped signal count to stay 1, got %d", got)
+	}
+	if got := len(b.Decisions()); got != 1 {
+		t.Fatalf("expected deduped decision count to stay 1, got %d", got)
+	}
+}
+
+func TestRecordWatchdogLedgerCreatesSignalAndDecision(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	b := NewBroker()
+	l := &Launcher{broker: b}
+
+	signalIDs, decisionID := l.recordWatchdogLedger("general", "task_stalled", "task-1", "fe", "Task is stalled.", "signal-1")
+	if decisionID == "" || len(signalIDs) < 1 {
+		t.Fatalf("expected watchdog refs, got signalIDs=%v decisionID=%q", signalIDs, decisionID)
+	}
+	if got := len(b.Signals()); got != 1 {
+		t.Fatalf("expected 1 watchdog signal, got %d", got)
+	}
+	if got := len(b.Decisions()); got != 1 {
+		t.Fatalf("expected 1 watchdog decision, got %d", got)
+	}
+	if decision := b.Decisions()[0]; decision.Kind != "remind_owner" {
+		t.Fatalf("unexpected watchdog decision: %+v", decision)
+	}
+}
+
+func TestPersistOfficeSignalsCreatesOwnedTaskAndLedger(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	b := NewBroker()
+	l := &Launcher{broker: b}
+
+	l.persistOfficeSignals("general", []officeSignal{{
+		ID:         "nex-1",
+		Source:     "nex_insights",
+		Kind:       "activity",
+		Title:      "Nex insight",
+		Content:    "Paul Williams is speaking at a product event and we should follow up on the opportunity.",
+		Channel:    "general",
+		Owner:      "ai",
+		Confidence: "very_high",
+		Urgency:    "normal",
+	}})
+
+	if got := len(b.Signals()); got != 1 {
+		t.Fatalf("expected 1 signal, got %d", got)
+	}
+	if got := len(b.Decisions()); got != 1 {
+		t.Fatalf("expected 1 decision, got %d", got)
+	}
+	if got := len(b.Messages()); got != 1 {
+		t.Fatalf("expected 1 automation message, got %d", got)
+	}
+	tasks := b.ChannelTasks("general")
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 planned task, got %d", len(tasks))
+	}
+	if tasks[0].Owner != "ai" || tasks[0].SourceSignalID == "" || tasks[0].SourceDecisionID == "" {
+		t.Fatalf("unexpected planned task: %+v", tasks[0])
+	}
+	if got := len(b.Actions()); got == 0 || b.Actions()[len(b.Actions())-1].Kind != "task_created" {
+		t.Fatalf("expected task_created action, got %+v", b.Actions())
+	}
+}

@@ -20,10 +20,12 @@ type officeSignal struct {
 }
 
 type officeActionPlan struct {
-	Summary  string
-	Tagged   []string
-	Tasks    []insightTaskPlan
-	Requests []humanInterview
+	Summary        string
+	Tagged         []string
+	Tasks          []insightTaskPlan
+	Requests       []humanInterview
+	DecisionKind   string
+	DecisionReason string
 }
 
 func buildInsightSignals(insights []nexInsight) []officeSignal {
@@ -77,6 +79,91 @@ func buildNotificationSignals(items []nexFeedItem) []officeSignal {
 		})
 	}
 	return signals
+}
+
+func isHumanDirectiveMessage(msg channelMessage) bool {
+	from := strings.TrimSpace(strings.ToLower(msg.From))
+	if from != "you" && from != "human" {
+		return false
+	}
+	kind := strings.TrimSpace(strings.ToLower(msg.Kind))
+	return kind == ""
+}
+
+func buildHumanDirectiveSignal(msg channelMessage) (officeSignal, bool) {
+	if !isHumanDirectiveMessage(msg) {
+		return officeSignal{}, false
+	}
+	content := strings.TrimSpace(msg.Content)
+	if content == "" {
+		return officeSignal{}, false
+	}
+	owner := "ceo"
+	for _, tagged := range msg.Tagged {
+		if tagged == "ceo" {
+			owner = "ceo"
+			break
+		}
+		if strings.TrimSpace(tagged) != "" {
+			owner = tagged
+			break
+		}
+	}
+	if owner == "ceo" {
+		if inferred := inferOwnerFromText(content); inferred != "" {
+			owner = inferred
+		}
+	}
+	return officeSignal{
+		ID:         strings.TrimSpace(msg.ID),
+		Source:     "human_directive",
+		Kind:       "directive",
+		Title:      "Human directive",
+		Content:    content,
+		Confidence: "explicit",
+		Urgency:    "high",
+		Channel:    normalizeChannelSlug(msg.Channel),
+		Owner:      owner,
+	}, true
+}
+
+func planHumanDirective(msg channelMessage) officeActionPlan {
+	plan := officeActionPlan{
+		DecisionKind:   "wake_specialist",
+		DecisionReason: "Direct human instructions should interrupt background work and be triaged ahead of autonomous follow-up.",
+	}
+	targets := make([]string, 0, len(msg.Tagged))
+	for _, tagged := range uniqueSlugs(msg.Tagged) {
+		if tagged == "ceo" || strings.TrimSpace(tagged) == "" {
+			continue
+		}
+		targets = append(targets, tagged)
+	}
+	if len(targets) == 0 {
+		if inferred := inferOwnerFromText(msg.Content); inferred != "" && inferred != "ceo" {
+			targets = append(targets, inferred)
+		}
+	}
+	if len(targets) == 0 {
+		plan.DecisionKind = "triage_human_directive"
+		plan.DecisionReason = "The CEO should triage this direct human request before waking anyone else."
+	}
+	plan.Tagged = targets
+
+	lines := []string{
+		"Human directed the office:",
+		"- " + strings.TrimSpace(msg.Content),
+	}
+	switch {
+	case len(targets) > 1:
+		lines = append(lines, "", "CEO should triage first, then wake @"+strings.Join(targets, ", @")+".")
+	case len(targets) == 1:
+		lines = append(lines, "", "CEO should triage first, then wake @"+targets[0]+".")
+	default:
+		lines = append(lines, "", "CEO should triage this directly before any background work takes priority.")
+	}
+	plan.Summary = strings.Join(lines, "\n")
+	return plan
 }
 
 func planOfficeActions(signals []officeSignal) officeActionPlan {
@@ -133,6 +220,20 @@ func planOfficeActions(signals []officeSignal) officeActionPlan {
 		lines = append(lines, "Some of this needs a human call, so I also opened a request instead of guessing.")
 	}
 	plan.Summary = strings.Join(lines, "\n")
+	switch {
+	case len(plan.Requests) > 0 && len(plan.Tasks) > 0:
+		plan.DecisionKind = "ask_human_and_create_task"
+		plan.DecisionReason = "High-signal context change produced owned work and at least one human decision point."
+	case len(plan.Requests) > 0:
+		plan.DecisionKind = "ask_human"
+		plan.DecisionReason = "The signal requires a human call before the office should proceed."
+	case len(plan.Tasks) > 0:
+		plan.DecisionKind = "create_task"
+		plan.DecisionReason = "The signal has a clear owner, so the office should open owned follow-up work immediately."
+	default:
+		plan.DecisionKind = "summarize"
+		plan.DecisionReason = "The signal is worth surfacing, but not strong enough to create new owned work."
+	}
 	return plan
 }
 

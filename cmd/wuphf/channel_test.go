@@ -261,6 +261,7 @@ func TestChannelViewUsesOfficeHeaderAndComposer(t *testing.T) {
 func TestHumanFacingMessageSwitchesBackToMessages(t *testing.T) {
 	m := newChannelModel(false)
 	m.activeApp = officeAppTasks
+	m.lastID = "msg-0"
 
 	next, _ := m.Update(channelMsg{messages: []brokerMessage{
 		{ID: "msg-1", From: "fe", Kind: "human_report", Title: "Frontend ready", Content: "Please review the launch page."},
@@ -275,6 +276,37 @@ func TestHumanFacingMessageSwitchesBackToMessages(t *testing.T) {
 	}
 	if !strings.Contains(got.notice, "@fe has something for you") {
 		t.Fatalf("expected human-facing notice, got %q", got.notice)
+	}
+}
+
+func TestInitialHumanFacingHistoryDoesNotForceMessagesApp(t *testing.T) {
+	m := newChannelModelWithApp(false, officeAppInsights)
+
+	next, _ := m.Update(channelMsg{messages: []brokerMessage{
+		{ID: "msg-1", From: "pm", Kind: "human_report", Title: "Scope ready", Content: "Please review the scope."},
+	}})
+
+	got, ok := next.(channelModel)
+	if !ok {
+		t.Fatalf("expected channelModel, got %T", next)
+	}
+	if got.activeApp != officeAppInsights {
+		t.Fatalf("expected initial history to keep insights active, got %v", got.activeApp)
+	}
+	if got.notice != "" {
+		t.Fatalf("expected no human-facing notice on initial history load, got %q", got.notice)
+	}
+}
+
+func TestResolveInitialOfficeAppFallsBackToMessages(t *testing.T) {
+	if got := resolveInitialOfficeApp("insights"); got != officeAppInsights {
+		t.Fatalf("expected insights app, got %q", got)
+	}
+	if got := resolveInitialOfficeApp("calendar"); got != officeAppCalendar {
+		t.Fatalf("expected calendar app, got %q", got)
+	}
+	if got := resolveInitialOfficeApp("not-real"); got != officeAppMessages {
+		t.Fatalf("expected invalid app to fall back to messages, got %q", got)
 	}
 }
 
@@ -999,6 +1031,49 @@ func TestCalendarViewRendersSchedulerAndActions(t *testing.T) {
 	view := stripANSI(m.View())
 	if !strings.Contains(view, "Calendar") || !strings.Contains(view, "Nex insights") || !strings.Contains(view, "Opened a follow-up task") {
 		t.Fatalf("expected calendar view content, got %q", view)
+	}
+}
+
+func TestInsightsViewRendersSignalsDecisionsAndWatchdogs(t *testing.T) {
+	m := newChannelModel(false)
+	m.width = 120
+	m.height = 30
+	m.activeApp = officeAppInsights
+	m.signals = []channelSignal{{
+		ID:         "signal-1",
+		Source:     "nex_insights",
+		Kind:       "risk",
+		Title:      "Nex insight",
+		Content:    "Signup conversion is slipping.",
+		Channel:    "general",
+		Owner:      "fe",
+		Urgency:    "high",
+		Confidence: "high",
+	}}
+	m.decisions = []channelDecision{{
+		ID:        "decision-1",
+		Kind:      "create_task",
+		Summary:   "Open a frontend follow-up.",
+		Reason:    "High-signal conversion risk.",
+		Owner:     "fe",
+		SignalIDs: []string{"signal-1"},
+		Channel:   "general",
+	}}
+	m.watchdogs = []channelWatchdog{{
+		ID:      "watchdog-1",
+		Kind:    "task_stalled",
+		Channel: "general",
+		Owner:   "fe",
+		Status:  "active",
+		Summary: "Task is waiting for movement.",
+	}}
+
+	view := stripANSI(m.View())
+	if !strings.Contains(view, "Signals") || !strings.Contains(view, "Decisions") || !strings.Contains(view, "Watchdogs") {
+		t.Fatalf("expected insights sections, got %q", view)
+	}
+	if !strings.Contains(view, "Signup conversion is slipping.") || !strings.Contains(view, "Open a frontend follow-up.") || !strings.Contains(view, "Task is waiting for movement.") {
+		t.Fatalf("expected ledger content in insights view, got %q", view)
 	}
 }
 

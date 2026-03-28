@@ -869,6 +869,155 @@ func TestBrokerTaskCreateReusesExistingOpenTask(t *testing.T) {
 	}
 }
 
+func TestBrokerStoresLedgerAndReviewLifecycle(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	b := NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("failed to start broker: %v", err)
+	}
+	defer b.Stop()
+
+	signals, err := b.RecordSignals([]officeSignal{{
+		ID:         "nex-1",
+		Source:     "nex_insights",
+		Kind:       "risk",
+		Title:      "Nex insight",
+		Content:    "Signup conversion is slipping.",
+		Channel:    "general",
+		Owner:      "fe",
+		Confidence: "high",
+		Urgency:    "high",
+	}})
+	if err != nil || len(signals) != 1 {
+		t.Fatalf("record signals: %v %v", err, signals)
+	}
+	decision, err := b.RecordDecision("create_task", "general", "Open a frontend follow-up.", "High-signal conversion risk.", "fe", []string{signals[0].ID}, false, false)
+	if err != nil {
+		t.Fatalf("record decision: %v", err)
+	}
+	task, reused, err := b.EnsurePlannedTask(plannedTaskInput{
+		Channel:          "general",
+		Title:            "Build signup conversion fix",
+		Details:          "Own the CTA and onboarding flow.",
+		Owner:            "fe",
+		CreatedBy:        "ceo",
+		ThreadID:         "msg-1",
+		TaskType:         "feature",
+		SourceSignalID:   signals[0].ID,
+		SourceDecisionID: decision.ID,
+	})
+	if err != nil || reused {
+		t.Fatalf("ensure planned task: %v reused=%v", err, reused)
+	}
+	if task.PipelineStage != "implement" || task.ExecutionMode != "local_worktree" || task.SourceDecisionID != decision.ID {
+		t.Fatalf("expected structured task metadata, got %+v", task)
+	}
+
+	base := fmt.Sprintf("http://%s", b.Addr())
+	body, _ := json.Marshal(map[string]any{
+		"action":     "complete",
+		"channel":    "general",
+		"id":         task.ID,
+		"created_by": "you",
+	})
+	req, _ := http.NewRequest(http.MethodPost, base+"/tasks", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+b.Token())
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("complete task: %v", err)
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Task teamTask `json:"task"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode completed task: %v", err)
+	}
+	if result.Task.Status != "review" || result.Task.ReviewState != "ready_for_review" {
+		t.Fatalf("expected review-ready task, got %+v", result.Task)
+	}
+
+	if _, _, err := b.CreateWatchdogAlert("task_stalled", "general", "task", task.ID, "fe", "Task is waiting for movement."); err != nil {
+		t.Fatalf("create watchdog: %v", err)
+	}
+	if len(b.Decisions()) != 1 || len(b.Signals()) != 1 || len(b.Watchdogs()) != 1 {
+		t.Fatalf("expected ledger state, got signals=%d decisions=%d watchdogs=%d", len(b.Signals()), len(b.Decisions()), len(b.Watchdogs()))
+	}
+}
+
+func TestBrokerBridgeEndpointRecordsVisibleBridge(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	b := NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("failed to start broker: %v", err)
+	}
+	defer b.Stop()
+
+	base := fmt.Sprintf("http://%s", b.Addr())
+	createChannelBody, _ := json.Marshal(map[string]any{
+		"action":      "create",
+		"slug":        "launch",
+		"name":        "Launch",
+		"description": "Launch planning and messaging.",
+		"members":     []string{"pm", "cmo"},
+		"created_by":  "ceo",
+	})
+	req, _ := http.NewRequest(http.MethodPost, base+"/channels", bytes.NewReader(createChannelBody))
+	req.Header.Set("Authorization", "Bearer "+b.Token())
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+	resp.Body.Close()
+
+	bridgeBody, _ := json.Marshal(map[string]any{
+		"actor":          "ceo",
+		"source_channel": "general",
+		"target_channel": "launch",
+		"summary":        "Use the stronger product narrative from #general in this launch channel before drafting the landing page.",
+		"tagged":         []string{"cmo"},
+	})
+	req, _ = http.NewRequest(http.MethodPost, base+"/bridges", bytes.NewReader(bridgeBody))
+	req.Header.Set("Authorization", "Bearer "+b.Token())
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("bridge request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected bridge success, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	messages := b.ChannelMessages("launch")
+	if len(messages) != 1 {
+		t.Fatalf("expected one bridge message in launch, got %d", len(messages))
+	}
+	if messages[0].Source != "ceo_bridge" || !strings.Contains(messages[0].Content, "#general") {
+		t.Fatalf("unexpected bridge message: %+v", messages[0])
+	}
+	if got := len(b.Signals()); got != 1 {
+		t.Fatalf("expected 1 bridge signal, got %d", got)
+	}
+	if got := len(b.Decisions()); got != 1 || b.Decisions()[0].Kind != "bridge_channel" {
+		t.Fatalf("unexpected bridge decisions: %+v", b.Decisions())
+	}
+	if got := len(b.Actions()); got == 0 || b.Actions()[len(b.Actions())-1].Kind != "bridge_channel" {
+		t.Fatalf("expected bridge action, got %+v", b.Actions())
+	}
+}
+
 func TestBrokerRequestsLifecycle(t *testing.T) {
 	oldPathFn := brokerStatePath
 	tmpDir := t.TempDir()

@@ -486,6 +486,10 @@ type channelModel struct {
 }
 
 func newChannelModel(threadsCollapsed bool) channelModel {
+	return newChannelModelWithApp(threadsCollapsed, officeAppMessages)
+}
+
+func newChannelModelWithApp(threadsCollapsed bool, initialApp officeApp) channelModel {
 	manifest, _ := company.LoadManifest()
 	officeMembers := officeMembersFromManifest(manifest)
 	channels := channelInfosFromManifest(manifest)
@@ -500,7 +504,7 @@ func newChannelModel(threadsCollapsed bool) channelModel {
 		mention:              tui.NewMention(channelMentionAgents(nil)),
 		initFlow:             tui.NewInitFlow(),
 		activeChannel:        "general",
-		activeApp:            officeAppMessages,
+		activeApp:            initialApp,
 		calendarRange:        calendarRangeWeek,
 		officeMembers:        officeMembers,
 		channels:             channels,
@@ -1087,6 +1091,7 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case channelMsg:
 		if len(msg.messages) > 0 {
+			hadHistory := m.lastID != ""
 			latestHumanFacing := latestHumanFacingMessage(msg.messages)
 			if m.scroll > 0 {
 				m.scroll += len(msg.messages)
@@ -1094,7 +1099,7 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.messages = append(m.messages, msg.messages...)
 			m.lastID = msg.messages[len(msg.messages)-1].ID
-			if latestHumanFacing != nil {
+			if latestHumanFacing != nil && hadHistory {
 				m.activeApp = officeAppMessages
 				m.notice = fmt.Sprintf("@%s has something for you", latestHumanFacing.From)
 			}
@@ -2353,7 +2358,7 @@ func (m *channelModel) selectSidebarItem(item sidebarItem) tea.Cmd {
 			return pollRequests(m.activeChannel)
 		case officeAppInsights:
 			m.notice = "Viewing Nex and office insights."
-			return pollBroker("", m.activeChannel)
+			return pollOfficeLedger()
 		case officeAppCalendar:
 			m.notice = "Viewing the office calendar."
 			return pollOfficeLedger()
@@ -3345,7 +3350,7 @@ func (m channelModel) runCommand(trimmed, threadTarget string) (tea.Model, tea.C
 		m.activeApp = officeAppInsights
 		m.syncSidebarCursorToActive()
 		m.notice = "Viewing Nex and office insights."
-		return m, tea.Batch(pollBroker("", m.activeChannel))
+		return m, pollOfficeLedger()
 	case trimmed == "/calendar" || trimmed == "/queue":
 		clearCurrent()
 		m.activeApp = officeAppCalendar
@@ -4544,7 +4549,16 @@ func isA2UIType(t string) bool {
 	return false
 }
 
-func runChannelView(threadsCollapsed bool) {
+func resolveInitialOfficeApp(name string) officeApp {
+	switch officeApp(strings.ToLower(strings.TrimSpace(name))) {
+	case officeAppMessages, officeAppTasks, officeAppRequests, officeAppInsights, officeAppCalendar:
+		return officeApp(strings.ToLower(strings.TrimSpace(name)))
+	default:
+		return officeAppMessages
+	}
+}
+
+func runChannelView(threadsCollapsed bool, initialApp officeApp) {
 	defer func() {
 		if r := recover(); r != nil {
 			reportChannelCrash(fmt.Sprintf("panic: %v\n\n%s", r, debug.Stack()))
@@ -4552,7 +4566,7 @@ func runChannelView(threadsCollapsed bool) {
 	}()
 
 	// Then launch the main channel view
-	p := tea.NewProgram(newChannelModel(threadsCollapsed), tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(newChannelModelWithApp(threadsCollapsed, initialApp), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		reportChannelCrash(fmt.Sprintf("channel view error: %v\n", err))
 	}
