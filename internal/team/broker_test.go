@@ -619,6 +619,9 @@ func TestBrokerUsageEndpointAggregatesTelemetry(t *testing.T) {
 	if usage.Total.TotalTokens != 1000 {
 		t.Fatalf("expected 1000 total tokens, got %d", usage.Total.TotalTokens)
 	}
+	if usage.Session.TotalTokens != 1000 {
+		t.Fatalf("expected 1000 session tokens, got %d", usage.Session.TotalTokens)
+	}
 	if usage.Agents["be"].CostUsd != 0.18 {
 		t.Fatalf("expected backend cost 0.18, got %+v", usage.Agents["be"])
 	}

@@ -494,6 +494,63 @@ func buildTaskLines(tasks []channelTask, contentWidth int) []renderedLine {
 	return lines
 }
 
+func buildSkillLines(skills []channelSkill, contentWidth int) []renderedLine {
+	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(slackMuted))
+	if len(skills) == 0 {
+		return []renderedLine{
+			{Text: ""},
+			{Text: muted.Render("  No skills yet.")},
+			{Text: muted.Render("  Skills are reusable prompts the team builds over time.")},
+			{Text: muted.Render("  Use /skill create <description> to define one.")},
+		}
+	}
+	statusColor := map[string]string{
+		"active":   "#22C55E",
+		"draft":    "#94A3B8",
+		"disabled": "#EF4444",
+	}
+	var lines []renderedLine
+	lines = append(lines, renderedLine{Text: renderDateSeparator(contentWidth, "Skills")})
+	for _, skill := range skills {
+		color := statusColor[skill.Status]
+		if color == "" {
+			color = "#22C55E"
+		}
+		statusLabel := skill.Status
+		if statusLabel == "" {
+			statusLabel = "active"
+		}
+		status := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(statusLabel)
+		lines = append(lines, renderedLine{Text: ""})
+		lines = append(lines, renderedLine{Text: "  ⚡ " + lipgloss.NewStyle().Bold(true).Render(skill.Title) + "  " + status})
+		if skill.Description != "" {
+			for _, line := range appendWrapped(nil, maxInt(20, contentWidth-4), "  "+skill.Description) {
+				lines = append(lines, renderedLine{Text: line})
+			}
+		}
+		metaParts := []string{}
+		if skill.Name != "" {
+			metaParts = append(metaParts, skill.Name)
+		}
+		if skill.UsageCount > 0 {
+			metaParts = append(metaParts, fmt.Sprintf("%d uses", skill.UsageCount))
+		}
+		if skill.CreatedBy != "" {
+			metaParts = append(metaParts, "by "+displayName(skill.CreatedBy))
+		}
+		if len(skill.Tags) > 0 {
+			metaParts = append(metaParts, strings.Join(skill.Tags, ", "))
+		}
+		if len(metaParts) > 0 {
+			lines = append(lines, renderedLine{Text: "  " + muted.Render(strings.Join(metaParts, " · "))})
+		}
+		if skill.Trigger != "" {
+			lines = append(lines, renderedLine{Text: "  " + muted.Render("trigger: "+skill.Trigger)})
+		}
+	}
+	return lines
+}
+
 func buildCalendarLines(actions []channelAction, jobs []channelSchedulerJob, tasks []channelTask, requests []channelInterview, activeChannel string, members []channelMember, viewRange calendarRange, filterSlug string, contentWidth int) []renderedLine {
 	muted := lipgloss.NewStyle().Foreground(lipgloss.Color(slackMuted))
 	var lines []renderedLine

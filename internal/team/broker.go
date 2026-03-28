@@ -198,6 +198,22 @@ type schedulerJob struct {
 	Payload         string `json:"payload,omitempty"`
 }
 
+type teamSkill struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Title       string   `json:"title"`
+	Description string   `json:"description,omitempty"`
+	Content     string   `json:"content"`
+	CreatedBy   string   `json:"created_by"`
+	Channel     string   `json:"channel,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Trigger     string   `json:"trigger,omitempty"`
+	UsageCount  int      `json:"usage_count"`
+	Status      string   `json:"status"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+}
+
 type brokerState struct {
 	Messages          []channelMessage       `json:"messages"`
 	Members           []officeMember         `json:"members,omitempty"`
@@ -211,6 +227,7 @@ type brokerState struct {
 	Decisions         []officeDecisionRecord `json:"decisions,omitempty"`
 	Watchdogs         []watchdogAlert        `json:"watchdogs,omitempty"`
 	Scheduler         []schedulerJob         `json:"scheduler,omitempty"`
+	Skills            []teamSkill            `json:"skills,omitempty"`
 	Counter           int                    `json:"counter"`
 	NotificationSince string                 `json:"notification_since,omitempty"`
 	InsightsSince     string                 `json:"insights_since,omitempty"`
@@ -229,8 +246,9 @@ type usageTotals struct {
 }
 
 type teamUsageState struct {
-	Total  usageTotals            `json:"total"`
-	Agents map[string]usageTotals `json:"agents,omitempty"`
+	Session usageTotals            `json:"session,omitempty"`
+	Total   usageTotals            `json:"total"`
+	Agents  map[string]usageTotals `json:"agents,omitempty"`
 }
 
 // Broker is a lightweight HTTP message broker for the team channel.
@@ -248,6 +266,7 @@ type Broker struct {
 	decisions         []officeDecisionRecord
 	watchdogs         []watchdogAlert
 	scheduler         []schedulerJob
+	skills            []teamSkill
 	counter           int
 	notificationSince string
 	insightsSince     string
@@ -334,6 +353,8 @@ func (b *Broker) StartOnPort(port int) error {
 	mux.HandleFunc("/watchdogs", b.requireAuth(b.handleWatchdogs))
 	mux.HandleFunc("/actions", b.requireAuth(b.handleActions))
 	mux.HandleFunc("/scheduler", b.requireAuth(b.handleScheduler))
+	mux.HandleFunc("/skills", b.requireAuth(b.handleSkills))
+	mux.HandleFunc("/skills/", b.requireAuth(b.handleSkillsSubpath))
 	mux.HandleFunc("/bridges", b.requireAuth(b.handleBridge))
 	mux.HandleFunc("/queue", b.requireAuth(b.handleQueue))
 	mux.HandleFunc("/v1/logs", b.requireAuth(b.handleOTLPLogs))
@@ -616,6 +637,7 @@ func (b *Broker) loadState() error {
 	b.decisions = state.Decisions
 	b.watchdogs = state.Watchdogs
 	b.scheduler = state.Scheduler
+	b.skills = state.Skills
 	b.counter = state.Counter
 	b.notificationSince = state.NotificationSince
 	b.insightsSince = state.InsightsSince
@@ -624,6 +646,7 @@ func (b *Broker) loadState() error {
 	if b.usage.Agents == nil {
 		b.usage.Agents = make(map[string]usageTotals)
 	}
+	b.usage.Session = usageTotals{}
 	if len(b.requests) == 0 && b.pendingInterview != nil {
 		b.requests = []humanInterview{*b.pendingInterview}
 	}
@@ -635,7 +658,7 @@ func (b *Broker) loadState() error {
 
 func (b *Broker) saveLocked() error {
 	path := brokerStatePath()
-	if len(b.messages) == 0 && len(b.tasks) == 0 && len(activeRequests(b.requests)) == 0 && len(b.actions) == 0 && len(b.signals) == 0 && len(b.decisions) == 0 && len(b.watchdogs) == 0 && len(b.scheduler) == 0 && isDefaultChannelState(b.channels) && isDefaultOfficeMemberState(b.members) && b.counter == 0 && b.notificationSince == "" && b.insightsSince == "" && usageStateIsZero(b.usage) && b.sessionMode == SessionModeOffice && b.oneOnOneAgent == DefaultOneOnOneAgent {
+	if len(b.messages) == 0 && len(b.tasks) == 0 && len(activeRequests(b.requests)) == 0 && len(b.actions) == 0 && len(b.signals) == 0 && len(b.decisions) == 0 && len(b.watchdogs) == 0 && len(b.scheduler) == 0 && len(b.skills) == 0 && isDefaultChannelState(b.channels) && isDefaultOfficeMemberState(b.members) && b.counter == 0 && b.notificationSince == "" && b.insightsSince == "" && usageStateIsZero(b.usage) && b.sessionMode == SessionModeOffice && b.oneOnOneAgent == DefaultOneOnOneAgent {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
@@ -657,11 +680,16 @@ func (b *Broker) saveLocked() error {
 		Decisions:         b.decisions,
 		Watchdogs:         b.watchdogs,
 		Scheduler:         b.scheduler,
+		Skills:            b.skills,
 		Counter:           b.counter,
 		NotificationSince: b.notificationSince,
 		InsightsSince:     b.insightsSince,
 		PendingInterview:  firstBlockingRequest(b.requests),
-		Usage:             b.usage,
+		Usage: func() teamUsageState {
+			usage := b.usage
+			usage.Session = usageTotals{}
+			return usage
+		}(),
 	}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -2273,6 +2301,10 @@ func (b *Broker) recordUsageLocked(event usageEvent) {
 	applyUsageEvent(&agentTotal, event)
 	b.usage.Agents[event.AgentSlug] = agentTotal
 
+	session := b.usage.Session
+	applyUsageEvent(&session, event)
+	b.usage.Session = session
+
 	total := b.usage.Total
 	applyUsageEvent(&total, event)
 	b.usage.Total = total
@@ -3538,4 +3570,365 @@ func FormatChannelView(messages []channelMessage) string {
 		}
 	}
 	return sb.String()
+}
+
+// --------------- Skills ---------------
+
+func (b *Broker) handleSkills(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		b.handleGetSkills(w, r)
+	case http.MethodPost:
+		b.handlePostSkill(w, r)
+	case http.MethodPut:
+		b.handlePutSkill(w, r)
+	case http.MethodDelete:
+		b.handleDeleteSkill(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (b *Broker) handleSkillsSubpath(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/skills/")
+	if strings.HasSuffix(path, "/invoke") {
+		b.handleInvokeSkill(w, r)
+		return
+	}
+	http.Error(w, "not found", http.StatusNotFound)
+}
+
+func skillSlug(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	s = strings.ReplaceAll(s, " ", "-")
+	s = strings.ReplaceAll(s, "_", "-")
+	return s
+}
+
+func (b *Broker) findSkillByNameLocked(name string) *teamSkill {
+	slug := skillSlug(name)
+	for i := range b.skills {
+		if skillSlug(b.skills[i].Name) == slug {
+			return &b.skills[i]
+		}
+	}
+	return nil
+}
+
+func (b *Broker) handleGetSkills(w http.ResponseWriter, r *http.Request) {
+	channelFilter := normalizeChannelSlug(r.URL.Query().Get("channel"))
+
+	b.mu.Lock()
+	result := make([]teamSkill, 0, len(b.skills))
+	for _, sk := range b.skills {
+		if sk.Status == "archived" {
+			continue
+		}
+		if channelFilter != "" && normalizeChannelSlug(sk.Channel) != channelFilter {
+			continue
+		}
+		result = append(result, sk)
+	}
+	b.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"skills": result})
+}
+
+func (b *Broker) handlePostSkill(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Action      string   `json:"action"`
+		Name        string   `json:"name"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Content     string   `json:"content"`
+		CreatedBy   string   `json:"created_by"`
+		Channel     string   `json:"channel"`
+		Tags        []string `json:"tags"`
+		Trigger     string   `json:"trigger"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	action := strings.TrimSpace(body.Action)
+	if action == "" {
+		action = "create"
+	}
+	if action != "create" && action != "propose" {
+		http.Error(w, "action must be create or propose", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" || strings.TrimSpace(body.Content) == "" || strings.TrimSpace(body.CreatedBy) == "" {
+		http.Error(w, "name, content, and created_by required", http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	channel := normalizeChannelSlug(body.Channel)
+	if channel == "" {
+		channel = "general"
+	}
+
+	status := "active"
+	msgKind := "skill_update"
+	if action == "propose" {
+		status = "proposed"
+		msgKind = "skill_proposal"
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if existing := b.findSkillByNameLocked(body.Name); existing != nil {
+		http.Error(w, "skill with this name already exists", http.StatusConflict)
+		return
+	}
+
+	title := strings.TrimSpace(body.Title)
+	if title == "" {
+		title = strings.TrimSpace(body.Name)
+	}
+
+	b.counter++
+	sk := teamSkill{
+		ID:          fmt.Sprintf("skill-%s", skillSlug(body.Name)),
+		Name:        strings.TrimSpace(body.Name),
+		Title:       title,
+		Description: strings.TrimSpace(body.Description),
+		Content:     strings.TrimSpace(body.Content),
+		CreatedBy:   strings.TrimSpace(body.CreatedBy),
+		Channel:     channel,
+		Tags:        body.Tags,
+		Trigger:     strings.TrimSpace(body.Trigger),
+		UsageCount:  0,
+		Status:      status,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	b.skills = append(b.skills, sk)
+
+	b.messages = append(b.messages, channelMessage{
+		ID:        fmt.Sprintf("msg-%d", b.counter),
+		From:      sk.CreatedBy,
+		Channel:   channel,
+		Kind:      msgKind,
+		Title:     sk.Title,
+		Content:   fmt.Sprintf("Skill %q %sd by @%s", sk.Name, action, sk.CreatedBy),
+		Timestamp: now,
+	})
+	b.appendActionLocked(msgKind, "office", channel, sk.CreatedBy, truncateSummary(sk.Title, 140), sk.ID)
+
+	if err := b.saveLocked(); err != nil {
+		http.Error(w, "failed to persist broker state", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"skill": sk})
+}
+
+func (b *Broker) handlePutSkill(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name        string   `json:"name"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Content     string   `json:"content"`
+		Channel     string   `json:"channel"`
+		Tags        []string `json:"tags"`
+		Trigger     string   `json:"trigger"`
+		Status      string   `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	sk := b.findSkillByNameLocked(body.Name)
+	if sk == nil {
+		http.Error(w, "skill not found", http.StatusNotFound)
+		return
+	}
+
+	if t := strings.TrimSpace(body.Title); t != "" {
+		sk.Title = t
+	}
+	if d := strings.TrimSpace(body.Description); d != "" {
+		sk.Description = d
+	}
+	if c := strings.TrimSpace(body.Content); c != "" {
+		sk.Content = c
+	}
+	if ch := normalizeChannelSlug(body.Channel); ch != "" {
+		sk.Channel = ch
+	}
+	if body.Tags != nil {
+		sk.Tags = body.Tags
+	}
+	if t := strings.TrimSpace(body.Trigger); t != "" {
+		sk.Trigger = t
+	}
+	if s := strings.TrimSpace(body.Status); s != "" {
+		sk.Status = s
+	}
+	sk.UpdatedAt = now
+
+	channel := normalizeChannelSlug(sk.Channel)
+	if channel == "" {
+		channel = "general"
+	}
+
+	b.counter++
+	b.messages = append(b.messages, channelMessage{
+		ID:        fmt.Sprintf("msg-%d", b.counter),
+		From:      sk.CreatedBy,
+		Channel:   channel,
+		Kind:      "skill_update",
+		Title:     sk.Title,
+		Content:   fmt.Sprintf("Skill %q updated", sk.Name),
+		Timestamp: now,
+	})
+	b.appendActionLocked("skill_update", "office", channel, sk.CreatedBy, truncateSummary(sk.Title+" [updated]", 140), sk.ID)
+
+	if err := b.saveLocked(); err != nil {
+		http.Error(w, "failed to persist broker state", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"skill": *sk})
+}
+
+func (b *Broker) handleDeleteSkill(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	sk := b.findSkillByNameLocked(body.Name)
+	if sk == nil {
+		http.Error(w, "skill not found", http.StatusNotFound)
+		return
+	}
+
+	sk.Status = "archived"
+	sk.UpdatedAt = now
+
+	channel := normalizeChannelSlug(sk.Channel)
+	if channel == "" {
+		channel = "general"
+	}
+
+	b.counter++
+	b.messages = append(b.messages, channelMessage{
+		ID:        fmt.Sprintf("msg-%d", b.counter),
+		From:      sk.CreatedBy,
+		Channel:   channel,
+		Kind:      "skill_update",
+		Title:     sk.Title,
+		Content:   fmt.Sprintf("Skill %q archived", sk.Name),
+		Timestamp: now,
+	})
+	b.appendActionLocked("skill_update", "office", channel, sk.CreatedBy, truncateSummary(sk.Title+" [archived]", 140), sk.ID)
+
+	if err := b.saveLocked(); err != nil {
+		http.Error(w, "failed to persist broker state", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+func (b *Broker) handleInvokeSkill(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract skill name from path: /skills/{name}/invoke
+	path := strings.TrimPrefix(r.URL.Path, "/skills/")
+	skillName := strings.TrimSuffix(path, "/invoke")
+	if strings.TrimSpace(skillName) == "" {
+		http.Error(w, "skill name required in path", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		InvokedBy string `json:"invoked_by"`
+		Channel   string `json:"channel"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	sk := b.findSkillByNameLocked(skillName)
+	if sk == nil {
+		http.Error(w, "skill not found", http.StatusNotFound)
+		return
+	}
+
+	sk.UsageCount++
+	sk.UpdatedAt = now
+
+	channel := normalizeChannelSlug(body.Channel)
+	if channel == "" {
+		channel = normalizeChannelSlug(sk.Channel)
+	}
+	if channel == "" {
+		channel = "general"
+	}
+
+	invoker := strings.TrimSpace(body.InvokedBy)
+	if invoker == "" {
+		invoker = "unknown"
+	}
+
+	b.counter++
+	b.messages = append(b.messages, channelMessage{
+		ID:        fmt.Sprintf("msg-%d", b.counter),
+		From:      invoker,
+		Channel:   channel,
+		Kind:      "skill_invocation",
+		Title:     sk.Title,
+		Content:   fmt.Sprintf("Skill %q invoked by @%s (usage #%d)", sk.Name, invoker, sk.UsageCount),
+		Timestamp: now,
+	})
+	b.appendActionLocked("skill_invocation", "office", channel, invoker, truncateSummary(sk.Title+" [invoked]", 140), sk.ID)
+
+	if err := b.saveLocked(); err != nil {
+		http.Error(w, "failed to persist broker state", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"skill": *sk})
 }

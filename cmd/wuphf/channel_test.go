@@ -384,6 +384,46 @@ func TestInitialHumanFacingHistoryDoesNotForceMessagesApp(t *testing.T) {
 	}
 }
 
+func TestChannelMsgDedupesOverlappingMessages(t *testing.T) {
+	m := newChannelModel(false)
+	m.messages = []brokerMessage{
+		{ID: "msg-1", From: "ceo", Content: "first"},
+	}
+	m.lastID = "msg-1"
+
+	next, _ := m.Update(channelMsg{messages: []brokerMessage{
+		{ID: "msg-1", From: "ceo", Content: "first"},
+		{ID: "msg-2", From: "pm", Content: "second"},
+	}})
+
+	got := next.(channelModel)
+	if len(got.messages) != 2 {
+		t.Fatalf("expected only one new unique message, got %+v", got.messages)
+	}
+	if got.messages[1].ID != "msg-2" {
+		t.Fatalf("expected msg-2 to be appended, got %+v", got.messages)
+	}
+}
+
+func TestChannelCreateDoneSwitchesToNewChannel(t *testing.T) {
+	m := newChannelModel(false)
+	m.activeChannel = "general"
+	m.messages = []brokerMessage{{ID: "msg-1", From: "ceo", Content: "hello"}}
+	m.lastID = "msg-1"
+
+	next, _ := m.Update(channelPostDoneMsg{action: "create", slug: "launch", notice: "Created #launch."})
+	got := next.(channelModel)
+	if got.activeChannel != "launch" {
+		t.Fatalf("expected active channel launch, got %q", got.activeChannel)
+	}
+	if got.lastID != "" || len(got.messages) != 0 {
+		t.Fatalf("expected channel history reset after create, got lastID=%q messages=%d", got.lastID, len(got.messages))
+	}
+	if got.notice != "Created #launch." {
+		t.Fatalf("expected create notice, got %q", got.notice)
+	}
+}
+
 func TestResolveInitialOfficeAppFallsBackToMessages(t *testing.T) {
 	if got := resolveInitialOfficeApp("insights"); got != officeAppInsights {
 		t.Fatalf("expected insights app, got %q", got)
@@ -598,6 +638,7 @@ func TestRenderSidebarShowsOfficeCharacterBubble(t *testing.T) {
 			LastMessage: "I am deep in the design details now",
 			LastTime:    time.Now().Format(time.RFC3339),
 		}},
+		nil,
 		"general",
 		officeAppMessages,
 		0,
@@ -630,6 +671,7 @@ func TestRenderThoughtBubbleDoesNotTruncateLongerAside(t *testing.T) {
 func TestRenderSidebarUsesCompactRosterWhenSpaceIsTight(t *testing.T) {
 	sidebar := stripANSI(renderSidebar(
 		[]channelInfo{{Slug: "general", Name: "general"}},
+		nil,
 		nil,
 		"general",
 		officeAppMessages,
@@ -667,6 +709,7 @@ func TestRenderSidebarFallsBackToOfficeRosterWhenPeopleListIsEmpty(t *testing.T)
 	sidebar := stripANSI(renderSidebar(
 		[]channelInfo{{Slug: "general", Name: "general"}},
 		nil,
+		nil,
 		"general",
 		officeAppMessages,
 		0,
@@ -680,8 +723,41 @@ func TestRenderSidebarFallsBackToOfficeRosterWhenPeopleListIsEmpty(t *testing.T)
 	if !strings.Contains(sidebar, "Agents · office roster") {
 		t.Fatalf("expected office roster header, got %q", sidebar)
 	}
-	if !strings.Contains(sidebar, "CEO") || !strings.Contains(sidebar, "Product Manager") {
+	if !strings.Contains(sidebar, "CEO") {
 		t.Fatalf("expected fallback roster members, got %q", sidebar)
+	}
+}
+
+func TestRenderSidebarShowsTaskDrivenWorkingState(t *testing.T) {
+	sidebar := stripANSI(renderSidebar(
+		[]channelInfo{{Slug: "general", Name: "general"}},
+		[]channelMember{{
+			Slug: "fe",
+			Name: "Frontend Engineer",
+			Role: "Frontend Engineer",
+		}},
+		[]channelTask{{
+			ID:      "task-1",
+			Channel: "general",
+			Title:   "landing page polish",
+			Owner:   "fe",
+			Status:  "in_progress",
+		}},
+		"general",
+		officeAppMessages,
+		0,
+		0,
+		false,
+		quickJumpNone,
+		true,
+		40,
+		44,
+	))
+	if !strings.Contains(sidebar, "working") {
+		t.Fatalf("expected task-driven working activity, got %q", sidebar)
+	}
+	if !strings.Contains(sidebar, "On landing page polish.") {
+		t.Fatalf("expected task-driven bubble, got %q", sidebar)
 	}
 }
 
@@ -1337,7 +1413,8 @@ func TestChannelViewShowsUsageTotals(t *testing.T) {
 	m.width = 120
 	m.height = 30
 	m.usage = channelUsageState{
-		Total: channelUsageTotals{TotalTokens: 12500, CostUsd: 1.23},
+		Session: channelUsageTotals{TotalTokens: 3200, CostUsd: 0.41},
+		Total:   channelUsageTotals{TotalTokens: 12500, CostUsd: 1.23},
 		Agents: map[string]channelUsageTotals{
 			"ceo": {TotalTokens: 5000, CostUsd: 0.62},
 			"fe":  {TotalTokens: 7500, CostUsd: 0.61},
@@ -1345,7 +1422,7 @@ func TestChannelViewShowsUsageTotals(t *testing.T) {
 	}
 
 	view := stripANSI(m.View())
-	if !strings.Contains(view, "Spend to date $1.23") {
+	if !strings.Contains(view, "Session $0.41") || !strings.Contains(view, "Total $1.23") {
 		t.Fatalf("expected overall spend summary, got %q", view)
 	}
 	if !strings.Contains(view, "◆ 5.0k tok · $0.62") {

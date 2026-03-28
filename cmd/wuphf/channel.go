@@ -73,8 +73,61 @@ type channelSchedulerMsg struct {
 	jobs []channelSchedulerJob
 }
 
+type channelSkill struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Content     string   `json:"content"`
+	CreatedBy   string   `json:"created_by"`
+	Channel     string   `json:"channel"`
+	Tags        []string `json:"tags"`
+	Trigger     string   `json:"trigger"`
+	UsageCount  int      `json:"usage_count"`
+	Status      string   `json:"status"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+}
+
+type channelSkillsMsg struct {
+	skills []channelSkill
+}
+
 type channelUsageMsg struct {
 	usage channelUsageState
+}
+
+func appendUniqueMessages(existing, incoming []brokerMessage) ([]brokerMessage, int) {
+	if len(incoming) == 0 {
+		return existing, 0
+	}
+	seen := make(map[string]struct{}, len(existing)+len(incoming))
+	out := make([]brokerMessage, 0, len(existing)+len(incoming))
+	for _, msg := range existing {
+		out = append(out, msg)
+		if strings.TrimSpace(msg.ID) != "" {
+			seen[msg.ID] = struct{}{}
+		}
+	}
+	added := 0
+	for _, msg := range incoming {
+		if id := strings.TrimSpace(msg.ID); id != "" {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+		}
+		out = append(out, msg)
+		added++
+	}
+	return out, added
+}
+
+func normalizeSidebarSlug(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, " ", "-")
+	value = strings.ReplaceAll(value, "_", "-")
+	return value
 }
 
 type channelHealthMsg struct {
@@ -162,8 +215,9 @@ type channelUsageTotals struct {
 }
 
 type channelUsageState struct {
-	Total  channelUsageTotals            `json:"total"`
-	Agents map[string]channelUsageTotals `json:"agents"`
+	Session channelUsageTotals            `json:"session,omitempty"`
+	Total   channelUsageTotals            `json:"total"`
+	Agents  map[string]channelUsageTotals `json:"agents"`
 }
 
 type channelTask struct {
@@ -263,7 +317,12 @@ type channelSchedulerJob struct {
 }
 
 type channelTickMsg time.Time
-type channelPostDoneMsg struct{ err error }
+type channelPostDoneMsg struct {
+	err    error
+	notice string
+	action string
+	slug   string
+}
 type channelInterviewAnswerDoneMsg struct{ err error }
 type channelInterruptDoneMsg struct{ err error }
 type channelResetDoneMsg struct {
@@ -353,6 +412,8 @@ var channelSlashCommands = []tui.SlashCommand{
 	{Name: "insights", Description: "Show Nex and office automation updates"},
 	{Name: "calendar", Description: "Show the office schedule and team calendars"},
 	{Name: "queue", Description: "Alias for /calendar"},
+	{Name: "skills", Description: "Show available skills"},
+	{Name: "skill", Description: "Create, invoke, or manage a skill"},
 	{Name: "reply", Description: "Reply in thread by message ID"},
 	{Name: "threads", Description: "Browse and manage threads"},
 	{Name: "expand", Description: "Expand a collapsed thread"},
@@ -399,6 +460,7 @@ const (
 	officeAppRequests officeApp = "requests"
 	officeAppInsights officeApp = "insights"
 	officeAppCalendar officeApp = "calendar"
+	officeAppSkills   officeApp = "skills"
 )
 
 type quickJumpTarget string
@@ -456,6 +518,7 @@ type channelModel struct {
 	decisions            []channelDecision
 	watchdogs            []channelWatchdog
 	scheduler            []channelSchedulerJob
+	skills               []channelSkill
 	pending              *channelInterview
 	lastID               string
 	activeChannel        string
@@ -594,6 +657,7 @@ func (m channelModel) pollCurrentState() tea.Cmd {
 		pollMembers(m.activeChannel),
 		pollRequests(m.activeChannel),
 		pollTasks(m.activeChannel),
+		pollSkills(m.activeChannel),
 		pollOfficeLedger(),
 		pollUsage(),
 		tickChannel(),
@@ -1063,8 +1127,44 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.posting = false
 		if msg.err != nil {
 			m.notice = "Send failed: " + msg.err.Error()
+		} else if strings.TrimSpace(msg.notice) != "" {
+			m.notice = msg.notice
 		} else if m.replyToID != "" {
 			m.notice = fmt.Sprintf("Reply sent to %s. Use /cancel to leave the thread.", m.replyToID)
+		}
+		switch strings.TrimSpace(msg.action) {
+		case "create":
+			if slug := normalizeSidebarSlug(msg.slug); slug != "" {
+				m.activeChannel = slug
+				m.activeApp = officeAppMessages
+				m.messages = nil
+				m.members = nil
+				m.tasks = nil
+				m.requests = nil
+				m.lastID = ""
+				m.replyToID = ""
+				m.threadPanelOpen = false
+				m.threadPanelID = ""
+				m.scroll = 0
+				m.unreadCount = 0
+				m.syncSidebarCursorToActive()
+			}
+		case "remove":
+			if normalizeSidebarSlug(msg.slug) == normalizeSidebarSlug(m.activeChannel) {
+				m.activeChannel = "general"
+				m.activeApp = officeAppMessages
+				m.messages = nil
+				m.members = nil
+				m.tasks = nil
+				m.requests = nil
+				m.lastID = ""
+				m.replyToID = ""
+				m.threadPanelOpen = false
+				m.threadPanelID = ""
+				m.scroll = 0
+				m.unreadCount = 0
+				m.syncSidebarCursorToActive()
+			}
 		}
 		return m, tea.Batch(pollChannels(), pollBroker("", m.activeChannel), pollMembers(m.activeChannel), pollRequests(m.activeChannel), pollTasks(m.activeChannel), pollOfficeLedger())
 
@@ -1174,12 +1274,16 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case channelMsg:
 		if len(msg.messages) > 0 {
 			hadHistory := m.lastID != ""
-			latestHumanFacing := latestHumanFacingMessage(msg.messages)
-			if m.scroll > 0 {
-				m.scroll += len(msg.messages)
-				m.unreadCount += len(msg.messages)
+			uniqueMessages, added := appendUniqueMessages(m.messages, msg.messages)
+			if added == 0 {
+				break
 			}
-			m.messages = append(m.messages, msg.messages...)
+			latestHumanFacing := latestHumanFacingMessage(uniqueMessages[len(m.messages):])
+			if m.scroll > 0 {
+				m.scroll += added
+				m.unreadCount += added
+			}
+			m.messages = uniqueMessages
 			m.lastID = msg.messages[len(msg.messages)-1].ID
 			if latestHumanFacing != nil && hadHistory {
 				m.activeApp = officeAppMessages
@@ -1248,6 +1352,10 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case channelTasksMsg:
 		m.tasks = msg.tasks
+
+	case channelSkillsMsg:
+		m.skills = msg.skills
+		return m, nil
 
 	case channelActionsMsg:
 		m.actions = msg.actions
@@ -1545,7 +1653,7 @@ func (m channelModel) View() string {
 	// ── Sidebar ──────────────────────────────────────────────────────
 	sidebar := ""
 	if layout.ShowSidebar && !m.isOneOnOne() {
-		sidebar = renderSidebar(m.channels, mergeOfficeMembers(m.officeMembers, m.members, m.currentChannelInfo()), m.activeChannel, m.activeApp, m.sidebarCursor, m.sidebarRosterOffset, m.focus == focusSidebar, m.quickJumpTarget, m.brokerConnected, layout.SidebarW, layout.ContentH)
+		sidebar = renderSidebar(m.channels, mergeOfficeMembers(m.officeMembers, m.members, m.currentChannelInfo()), m.tasks, m.activeChannel, m.activeApp, m.sidebarCursor, m.sidebarRosterOffset, m.focus == focusSidebar, m.quickJumpTarget, m.brokerConnected, layout.SidebarW, layout.ContentH)
 	}
 
 	// ── Thread panel ─────────────────────────────────────────────────
@@ -1574,10 +1682,15 @@ func (m channelModel) View() string {
 		Render(appIcon(m.activeApp) + " " + m.currentHeaderTitle())
 	headerMeta := lipgloss.NewStyle().Foreground(lipgloss.Color(slackMuted)).
 		Render(m.currentHeaderMeta())
-	if m.usage.Total.TotalTokens > 0 || m.usage.Total.CostUsd > 0 {
+	if m.usage.Total.TotalTokens > 0 || m.usage.Total.CostUsd > 0 || m.usage.Session.TotalTokens > 0 || m.usage.Session.CostUsd > 0 {
 		headerMeta += "  " + lipgloss.NewStyle().
 			Foreground(lipgloss.Color(slackActive)).
-			Render(fmt.Sprintf("Spend to date %s · %s", formatUsd(m.usage.Total.CostUsd), formatTokenCount(m.usage.Total.TotalTokens)))
+			Render(fmt.Sprintf("Session %s · %s  Total %s · %s",
+				formatUsd(m.usage.Session.CostUsd),
+				formatTokenCount(m.usage.Session.TotalTokens),
+				formatUsd(m.usage.Total.CostUsd),
+				formatTokenCount(m.usage.Total.TotalTokens),
+			))
 	}
 	if m.activeApp == officeAppMessages && m.unreadCount > 0 && m.scroll > 0 {
 		headerMeta += "  " + lipgloss.NewStyle().
@@ -1718,10 +1831,13 @@ func (m channelModel) View() string {
 		statusBar = statusBarStyle(m.width).Render(
 			lipgloss.NewStyle().Foreground(lipgloss.Color("#FBBF24")).Render(statusText),
 		)
-	} else if m.usage.Total.TotalTokens > 0 || m.usage.Total.CostUsd > 0 {
+	} else if m.usage.Total.TotalTokens > 0 || m.usage.Total.CostUsd > 0 || m.usage.Session.TotalTokens > 0 || m.usage.Session.CostUsd > 0 {
 		statusBar = statusBarStyle(m.width).Render(fmt.Sprintf(
-			" %s %d online │ bill %s │ tokens %s │ %s │ Tab focus:%s │ /quit",
-			"\u25CF", onlineCount, formatUsd(m.usage.Total.CostUsd), formatTokenCount(m.usage.Total.TotalTokens), scrollHint, focusLabel,
+			" %s %d online │ session %s · %s │ total %s · %s │ %s │ Tab focus:%s │ /quit",
+			"\u25CF", onlineCount,
+			formatUsd(m.usage.Session.CostUsd), formatTokenCount(m.usage.Session.TotalTokens),
+			formatUsd(m.usage.Total.CostUsd), formatTokenCount(m.usage.Total.TotalTokens),
+			scrollHint, focusLabel,
 		))
 	} else if m.quickJumpTarget != quickJumpNone {
 		label := "channels"
@@ -1791,6 +1907,8 @@ func (m channelModel) currentHeaderTitle() string {
 		return "# " + m.activeChannel + " · Insights"
 	case officeAppCalendar:
 		return "# " + m.activeChannel + " · Calendar"
+	case officeAppSkills:
+		return "# " + m.activeChannel + " · Skills"
 	default:
 		return "# " + m.activeChannel
 	}
@@ -1865,6 +1983,14 @@ func (m channelModel) currentHeaderMeta() string {
 			filter = displayName(m.calendarFilter)
 		}
 		return fmt.Sprintf("  %s view · %s · %d upcoming · %d due soon · %d recent actions", view, filter, len(events), dueSoon, len(m.actions))
+	case officeAppSkills:
+		active := 0
+		for _, skill := range m.skills {
+			if skill.Status == "" || skill.Status == "active" {
+				active++
+			}
+		}
+		return fmt.Sprintf("  Reusable team skills · %d total · %d active", len(m.skills), active)
 	default:
 		if !m.brokerConnected {
 			return fmt.Sprintf("  Offline preview · manifest roster loaded · %d teammates ready for #%s", len(m.officeMembers), m.activeChannel)
@@ -1886,6 +2012,8 @@ func (m channelModel) currentAppLabel() string {
 		return "insights"
 	case officeAppCalendar:
 		return "calendar"
+	case officeAppSkills:
+		return "skills"
 	default:
 		return "messages"
 	}
@@ -1904,6 +2032,8 @@ func (m channelModel) currentMainLines(contentWidth int) []renderedLine {
 		return buildInsightLines(m.signals, m.decisions, m.watchdogs, contentWidth)
 	case officeAppCalendar:
 		return buildCalendarLines(m.actions, m.scheduler, m.tasks, m.requests, m.activeChannel, m.members, m.calendarRange, m.calendarFilter, contentWidth)
+	case officeAppSkills:
+		return buildSkillLines(m.skills, contentWidth)
 	default:
 		return buildOfficeMessageLines(m.messages, m.expandedThreads, contentWidth, m.threadsDefaultExpand)
 	}
@@ -2084,10 +2214,15 @@ func (m channelModel) mainPanelGeometry(mainW, contentH int) (headerH, msgH int,
 		Render(m.currentHeaderTitle())
 	headerMeta := lipgloss.NewStyle().Foreground(lipgloss.Color(slackMuted)).
 		Render(m.currentHeaderMeta())
-	if m.usage.Total.TotalTokens > 0 || m.usage.Total.CostUsd > 0 {
+	if m.usage.Total.TotalTokens > 0 || m.usage.Total.CostUsd > 0 || m.usage.Session.TotalTokens > 0 || m.usage.Session.CostUsd > 0 {
 		headerMeta += "  " + lipgloss.NewStyle().
 			Foreground(lipgloss.Color(slackActive)).
-			Render(fmt.Sprintf("Spend to date %s · %s", formatUsd(m.usage.Total.CostUsd), formatTokenCount(m.usage.Total.TotalTokens)))
+			Render(fmt.Sprintf("Session %s · %s  Total %s · %s",
+				formatUsd(m.usage.Session.CostUsd),
+				formatTokenCount(m.usage.Session.TotalTokens),
+				formatUsd(m.usage.Total.CostUsd),
+				formatTokenCount(m.usage.Total.TotalTokens),
+			))
 	}
 	channelHeader := headerStyle.Render(headerLine1 + headerMeta)
 	if usageLine := renderUsageStrip(m.usage, m.members, mainW); usageLine != "" {
@@ -2522,6 +2657,9 @@ func (m *channelModel) selectSidebarItem(item sidebarItem) tea.Cmd {
 		case officeAppCalendar:
 			m.notice = "Viewing the office calendar."
 			return pollOfficeLedger()
+		case officeAppSkills:
+			m.notice = "Viewing skills."
+			return pollSkills(m.activeChannel)
 		}
 	}
 	return nil
@@ -3592,6 +3730,38 @@ func (m channelModel) runCommand(trimmed, threadTarget string) (tea.Model, tea.C
 			m.notice = "Filtering calendar for " + displayName(filter) + "."
 			return m, pollOfficeLedger()
 		}
+	case trimmed == "/skills":
+		clearCurrent()
+		m.activeApp = officeAppSkills
+		m.syncSidebarCursorToActive()
+		m.notice = "Viewing skills."
+		return m, pollSkills(m.activeChannel)
+	case strings.HasPrefix(trimmed, "/skill create "):
+		clearCurrent()
+		desc := strings.TrimSpace(strings.TrimPrefix(trimmed, "/skill create "))
+		if desc == "" {
+			m.notice = "Usage: /skill create <description>"
+			return m, nil
+		}
+		m.posting = true
+		return m, createSkill(desc, m.activeChannel)
+	case strings.HasPrefix(trimmed, "/skill invoke "):
+		clearCurrent()
+		name := strings.TrimSpace(strings.TrimPrefix(trimmed, "/skill invoke "))
+		if name == "" {
+			m.notice = "Usage: /skill invoke <name>"
+			return m, nil
+		}
+		m.posting = true
+		return m, invokeSkill(name)
+	case trimmed == "/skill":
+		clearCurrent()
+		m.notice = "Usage: /skill create <description> or /skill invoke <name>"
+		return m, nil
+	case strings.HasPrefix(trimmed, "/skill "):
+		clearCurrent()
+		m.notice = "Usage: /skill create <description> or /skill invoke <name>"
+		return m, nil
 	case strings.HasPrefix(trimmed, "/channel "):
 		clearCurrent()
 		parts := strings.Fields(trimmed)
@@ -4151,7 +4321,17 @@ func mutateChannel(action, slug, description string) tea.Cmd {
 			body, _ := io.ReadAll(resp.Body)
 			return channelPostDoneMsg{err: fmt.Errorf("%s", strings.TrimSpace(string(body)))}
 		}
-		return channelPostDoneMsg{}
+		if err := reconfigureLiveOfficeSession(); err != nil {
+			return channelPostDoneMsg{err: err}
+		}
+		notice := ""
+		switch action {
+		case "create":
+			notice = fmt.Sprintf("Created #%s.", normalizeSidebarSlug(slug))
+		case "remove":
+			notice = fmt.Sprintf("Removed #%s.", normalizeSidebarSlug(slug))
+		}
+		return channelPostDoneMsg{notice: notice, action: action, slug: normalizeSidebarSlug(slug)}
 	}
 }
 
@@ -4176,7 +4356,11 @@ func mutateChannelMember(channel, action, slug string) tea.Cmd {
 			body, _ := io.ReadAll(resp.Body)
 			return channelPostDoneMsg{err: fmt.Errorf("%s", strings.TrimSpace(string(body)))}
 		}
-		return channelPostDoneMsg{}
+		if err := reconfigureLiveOfficeSession(); err != nil {
+			return channelPostDoneMsg{err: err}
+		}
+		notice := fmt.Sprintf("%s @%s in #%s.", strings.Title(action), normalizeSidebarSlug(slug), normalizeSidebarSlug(channel))
+		return channelPostDoneMsg{notice: notice}
 	}
 }
 
@@ -4203,15 +4387,20 @@ func mutateOfficeMember(action, slug, name string) tea.Cmd {
 			body, _ := io.ReadAll(resp.Body)
 			return channelPostDoneMsg{err: fmt.Errorf("%s", strings.TrimSpace(string(body)))}
 		}
-		l, err := team.NewLauncher("")
-		if err != nil {
+		if err := reconfigureLiveOfficeSession(); err != nil {
 			return channelPostDoneMsg{err: err}
 		}
-		if err := l.ReconfigureSession(); err != nil {
-			return channelPostDoneMsg{err: err}
-		}
-		return channelPostDoneMsg{}
+		notice := fmt.Sprintf("%s @%s.", strings.Title(action), normalizeSidebarSlug(slug))
+		return channelPostDoneMsg{notice: notice}
 	}
+}
+
+func reconfigureLiveOfficeSession() error {
+	l, err := team.NewLauncher("")
+	if err != nil {
+		return err
+	}
+	return l.ReconfigureSession()
 }
 
 func mutateTask(action, taskID, owner, channel string) tea.Cmd {
@@ -4303,6 +4492,70 @@ func pollTasks(channel string) tea.Cmd {
 			return channelTasksMsg{}
 		}
 		return channelTasksMsg{tasks: result.Tasks}
+	}
+}
+
+func pollSkills(channel string) tea.Cmd {
+	return func() tea.Msg {
+		req, err := newBrokerRequest(http.MethodGet, "http://127.0.0.1:7890/skills?channel="+channel, nil)
+		if err != nil {
+			return channelSkillsMsg{}
+		}
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return channelSkillsMsg{}
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return channelSkillsMsg{}
+		}
+		var result struct {
+			Skills []channelSkill `json:"skills"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return channelSkillsMsg{}
+		}
+		return channelSkillsMsg{skills: result.Skills}
+	}
+}
+
+func createSkill(description, channel string) tea.Cmd {
+	return func() tea.Msg {
+		payload := map[string]string{
+			"action":      "create",
+			"description": description,
+			"channel":     channel,
+		}
+		body, _ := json.Marshal(payload)
+		req, err := newBrokerRequest(http.MethodPost, "http://127.0.0.1:7890/skills", bytes.NewReader(body))
+		if err != nil {
+			return channelSkillsMsg{}
+		}
+		req.Header.Set("Content-Type", "application/json")
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return channelSkillsMsg{}
+		}
+		defer resp.Body.Close()
+		return channelSkillsMsg{}
+	}
+}
+
+func invokeSkill(name string) tea.Cmd {
+	return func() tea.Msg {
+		req, err := newBrokerRequest(http.MethodPost, "http://127.0.0.1:7890/skills/"+name+"/invoke", nil)
+		if err != nil {
+			return channelSkillsMsg{}
+		}
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return channelSkillsMsg{}
+		}
+		defer resp.Body.Close()
+		return channelSkillsMsg{}
 	}
 }
 

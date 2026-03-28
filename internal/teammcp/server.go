@@ -13,10 +13,14 @@ import (
 	"unicode"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/nex-crm/wuphf/internal/team"
 )
 
 const defaultBrokerBaseURL = "http://127.0.0.1:7890"
 const defaultBrokerTokenFile = "/tmp/wuphf-broker-token"
+
+var reconfigureOfficeSessionFn = reconfigureLiveOffice
 
 type brokerMessage struct {
 	ID          string   `json:"id"`
@@ -1070,6 +1074,9 @@ func handleTeamChannel(ctx context.Context, _ *mcp.CallToolRequest, args TeamCha
 	}, nil); err != nil {
 		return toolError(err), nil, nil
 	}
+	if err := reconfigureOfficeSessionFn(); err != nil {
+		return toolError(err), nil, nil
+	}
 	return textResult(fmt.Sprintf("%s channel #%s", strings.Title(strings.TrimSpace(args.Action)), channel)), nil, nil
 }
 
@@ -1087,6 +1094,9 @@ func handleTeamChannelMember(ctx context.Context, _ *mcp.CallToolRequest, args T
 		"channel": channel,
 		"slug":    member,
 	}, nil); err != nil {
+		return toolError(err), nil, nil
+	}
+	if err := reconfigureOfficeSessionFn(); err != nil {
 		return toolError(err), nil, nil
 	}
 	return textResult(fmt.Sprintf("%s @%s in #%s", strings.Title(strings.TrimSpace(args.Action)), member, channel)), nil, nil
@@ -1151,6 +1161,9 @@ func handleTeamMember(ctx context.Context, _ *mcp.CallToolRequest, args TeamMemb
 		}, nil); err != nil {
 			return toolError(err), nil, nil
 		}
+		if err := reconfigureOfficeSessionFn(); err != nil {
+			return toolError(err), nil, nil
+		}
 		return textResult(fmt.Sprintf("Created office member @%s.", slug)), nil, nil
 	case "remove":
 		if err := brokerPostJSON(ctx, "/office-members", map[string]any{
@@ -1159,10 +1172,21 @@ func handleTeamMember(ctx context.Context, _ *mcp.CallToolRequest, args TeamMemb
 		}, nil); err != nil {
 			return toolError(err), nil, nil
 		}
+		if err := reconfigureOfficeSessionFn(); err != nil {
+			return toolError(err), nil, nil
+		}
 		return textResult(fmt.Sprintf("Removed office member @%s.", slug)), nil, nil
 	default:
 		return toolError(fmt.Errorf("unknown action %q", args.Action)), nil, nil
 	}
+}
+
+func reconfigureLiveOffice() error {
+	l, err := team.NewLauncher("")
+	if err != nil {
+		return err
+	}
+	return l.ReconfigureSession()
 }
 
 func brokerBaseURL() string {

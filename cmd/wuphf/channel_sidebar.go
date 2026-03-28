@@ -248,6 +248,73 @@ func officeAside(slug, activity, lastMessage string, now time.Time) string {
 	return options[int(h.Sum32())%len(options)]
 }
 
+func activeSidebarTask(tasks []channelTask, slug string) (channelTask, bool) {
+	bestScore := -1
+	var best channelTask
+	for _, task := range tasks {
+		if strings.TrimSpace(task.Owner) != slug {
+			continue
+		}
+		status := strings.ToLower(strings.TrimSpace(task.Status))
+		if status == "done" || status == "released" {
+			continue
+		}
+		score := 1
+		switch status {
+		case "in_progress":
+			score = 4
+		case "review":
+			score = 3
+		case "blocked":
+			score = 2
+		case "claimed", "pending", "open":
+			score = 1
+		}
+		if score > bestScore {
+			bestScore = score
+			best = task
+		}
+	}
+	return best, bestScore >= 0
+}
+
+func applyTaskActivity(act memberActivity, task channelTask) memberActivity {
+	switch strings.ToLower(strings.TrimSpace(task.Status)) {
+	case "in_progress":
+		return memberActivity{Label: "working", Color: dotCoding, Dot: "\u26A1"}
+	case "review":
+		return memberActivity{Label: "reviewing", Color: dotThinking, Dot: "\u25C6"}
+	case "blocked":
+		return memberActivity{Label: "blocked", Color: "#DC2626", Dot: "\u25CF"}
+	case "claimed", "pending", "open":
+		if act.Label == "talking" || act.Label == "plotting" {
+			return act
+		}
+		return memberActivity{Label: "queued", Color: dotThinking, Dot: "\u25D4"}
+	default:
+		return act
+	}
+}
+
+func taskBubbleText(task channelTask) string {
+	title := strings.TrimSpace(task.Title)
+	if title == "" {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(task.Status)) {
+	case "in_progress":
+		return "On " + title + "."
+	case "review":
+		return "Reviewing " + title + "."
+	case "blocked":
+		return "Blocked on " + title + "."
+	case "claimed", "pending", "open":
+		return "Queued: " + title + "."
+	default:
+		return ""
+	}
+}
+
 func renderThoughtBubble(text string, width int) []string {
 	if text == "" || width < 6 {
 		return nil
@@ -297,7 +364,7 @@ func sidebarStyledRow(style lipgloss.Style, text string, width int) string {
 }
 
 // renderSidebar renders the Slack-style sidebar with channels and team members.
-func renderSidebar(channels []channelInfo, members []channelMember, activeChannel string, activeApp officeApp, cursor int, rosterOffset int, focused bool, quickJump quickJumpTarget, brokerConnected bool, width, height int) string {
+func renderSidebar(channels []channelInfo, members []channelMember, tasks []channelTask, activeChannel string, activeApp officeApp, cursor int, rosterOffset int, focused bool, quickJump quickJumpTarget, brokerConnected bool, width, height int) string {
 	if width < 2 {
 		return ""
 	}
@@ -381,6 +448,7 @@ func renderSidebar(channels []channelInfo, members []channelMember, activeChanne
 		{officeAppMessages, "Messages"},
 		{officeAppTasks, "Tasks"},
 		{officeAppRequests, "Requests"},
+		{officeAppSkills, "Skills"},
 		{officeAppInsights, "Insights"},
 		{officeAppCalendar, "Calendar"},
 	}
@@ -457,7 +525,13 @@ func renderSidebar(channels []channelInfo, members []channelMember, activeChanne
 	for i := start; i < end; i++ {
 		m := members[i]
 		act := classifyActivity(m)
+		if task, ok := activeSidebarTask(tasks, m.Slug); ok {
+			act = applyTaskActivity(act, task)
+		}
 		character := renderOfficeCharacter(m, act, now)
+		if task, ok := activeSidebarTask(tasks, m.Slug); ok && character.Bubble == "" {
+			character.Bubble = taskBubbleText(task)
+		}
 
 		dotStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(act.Color))
 		dot := dotStyle.Render(act.Dot)

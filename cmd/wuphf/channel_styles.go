@@ -315,6 +315,8 @@ func appIcon(app officeApp) string {
 		return "✦"
 	case officeAppCalendar:
 		return "◷"
+	case officeAppSkills:
+		return "⚡"
 	case officeAppMessages:
 		return "•"
 	default:

@@ -1,6 +1,14 @@
 package teammcp
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"testing"
+
+	"github.com/nex-crm/wuphf/internal/team"
+)
 
 func TestSuppressBroadcastReasonBlocksOutOfDomainReply(t *testing.T) {
 	reason := suppressBroadcastReason(
@@ -54,5 +62,115 @@ func TestIsOneOnOneModeFromEnv(t *testing.T) {
 	t.Setenv("WUPHF_ONE_ON_ONE", "1")
 	if !isOneOnOneMode() {
 		t.Fatal("expected 1o1 env to enable direct mode")
+	}
+}
+
+func TestHandleTeamMemberCreateTriggersReconfigure(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	b := team.NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("start broker: %v", err)
+	}
+	defer b.Stop()
+
+	t.Setenv("WUPHF_TEAM_BROKER_URL", "http://"+b.Addr())
+	t.Setenv("WUPHF_BROKER_TOKEN", b.Token())
+
+	called := 0
+	prev := reconfigureOfficeSessionFn
+	reconfigureOfficeSessionFn = func() error {
+		called++
+		return nil
+	}
+	defer func() { reconfigureOfficeSessionFn = prev }()
+
+	if _, _, err := handleTeamMember(context.Background(), nil, TeamMemberArgs{
+		Action: "create",
+		Slug:   "growthops",
+		Name:   "Growth Ops",
+		Role:   "Growth Ops",
+		MySlug: "ceo",
+	}); err != nil {
+		t.Fatalf("handleTeamMember: %v", err)
+	}
+	if called != 1 {
+		t.Fatalf("expected one reconfigure call, got %d", called)
+	}
+	found := false
+	for _, member := range b.OfficeMembers() {
+		if member.Slug == "growthops" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected created office member to persist")
+	}
+}
+
+func TestHandleTeamChannelCreateTriggersReconfigure(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	b := team.NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("start broker: %v", err)
+	}
+	defer b.Stop()
+
+	t.Setenv("WUPHF_TEAM_BROKER_URL", "http://"+b.Addr())
+	t.Setenv("WUPHF_BROKER_TOKEN", b.Token())
+
+	called := 0
+	prev := reconfigureOfficeSessionFn
+	reconfigureOfficeSessionFn = func() error {
+		called++
+		return nil
+	}
+	defer func() { reconfigureOfficeSessionFn = prev }()
+
+	if _, _, err := handleTeamChannel(context.Background(), nil, TeamChannelArgs{
+		Action:      "create",
+		Channel:     "launch",
+		Name:        "launch",
+		Description: "Launch execution channel",
+		Members:     []string{"pm", "fe"},
+		MySlug:      "ceo",
+	}); err != nil {
+		t.Fatalf("handleTeamChannel: %v", err)
+	}
+	if called != 1 {
+		t.Fatalf("expected one reconfigure call, got %d", called)
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/channels", b.Addr()), nil)
+	req.Header.Set("Authorization", "Bearer "+b.Token())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("fetch channels: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Channels []struct {
+			Slug        string   `json:"slug"`
+			Description string   `json:"description"`
+			Members     []string `json:"members"`
+		} `json:"channels"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode channels: %v", err)
+	}
+
+	found := false
+	for _, ch := range result.Channels {
+		if ch.Slug == "launch" {
+			found = true
+			if ch.Description != "Launch execution channel" {
+				t.Fatalf("expected description to persist, got %+v", ch)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected created channel to persist")
 	}
 }
