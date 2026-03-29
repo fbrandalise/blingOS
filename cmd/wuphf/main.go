@@ -54,7 +54,7 @@ func main() {
 
 	// Channel view mode (launched by wuphf team in tmux)
 	if *channelView {
-		runChannelView(*threadsCollapsed, resolveInitialOfficeApp(*channelApp))
+		runChannelView(*threadsCollapsed, resolveInitialOfficeApp(*channelApp), strings.TrimSpace(*channelApp) != "")
 		return
 	}
 

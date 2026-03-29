@@ -73,7 +73,7 @@ fi
 termwright daemon --socket "$SOCKET" --cols 120 --rows 40 --background -- env \
   WUPHF_BROKER_TOKEN="$BROKER_TOKEN" \
   WUPHF_AGENT_TEMPLATE_STUB="$STUB" \
-  "$BINARY" --channel-view
+  "$BINARY" --channel-view --channel-app messages
 sleep 5
 
 assert_contains "# general" "boot"

@@ -60,7 +60,7 @@ echo "=== Office Channel E2E ==="
 echo "Binary: $BINARY"
 echo "Artifacts: $ARTIFACTS"
 
-termwright daemon --socket "$SOCKET" --cols 120 --rows 40 --background -- "$BINARY" --channel-view
+termwright daemon --socket "$SOCKET" --cols 120 --rows 40 --background -- "$BINARY" --channel-view --channel-app messages
 sleep 5
 
 assert_contains "# general" "boot"

@@ -5110,14 +5110,21 @@ func resolveInitialOfficeApp(name string) officeApp {
 	}
 }
 
-func runChannelView(threadsCollapsed bool, initialApp officeApp) {
+func runChannelView(threadsCollapsed bool, initialApp officeApp, skipSplash bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			reportChannelCrash(fmt.Sprintf("panic: %v\n\n%s", r, debug.Stack()))
 		}
 	}()
 
-	// Then launch the main channel view
+	if !skipSplash {
+		splash := tea.NewProgram(newSplashModel(), tea.WithAltScreen())
+		if _, err := splash.Run(); err != nil {
+			reportChannelCrash(fmt.Sprintf("splash error: %v\n", err))
+			return
+		}
+	}
+
 	p := tea.NewProgram(newChannelModelWithApp(threadsCollapsed, initialApp), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		reportChannelCrash(fmt.Sprintf("channel view error: %v\n", err))
