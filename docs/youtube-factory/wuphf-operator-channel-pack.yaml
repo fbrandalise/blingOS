@@ -1,0 +1,235 @@
+metadata:
+  id: "youtube_factory_wuphf_operator_channel_pack"
+  version: 1
+  status: "dry_run_ready"
+  updated_at: "2026-04-14"
+  owner: "gtm"
+  purpose: "Publish-ready channel seed for the WUPHF operator-led YouTube wedge."
+  source_docs:
+    - "wuphf-operator-channel-package.md"
+    - "default-channel-pack.yaml"
+    - "monetization-registry.yaml"
+    - "partner-matrix.yaml"
+
+workspace:
+  workspace_id: "wuphf-operator-channel"
+  pipeline_id: "youtube-factory"
+  publish_mode: "dry_run_until_human_approval"
+  default_language: "en"
+  default_market: "US"
+
+channel:
+  brand_name: "WUPHF"
+  handle_options:
+    - "@wuphf"
+    - "@wuphfoffice"
+    - "@theaioffice"
+  thesis: "The YouTube channel for people running AI agents like a real team, not a ticket queue."
+  tagline: "See your AI agents work. Steer them mid-flight."
+  short_bio: "Operator-grade multi-agent demos, migration breakdowns, and runbooks for teams that need visibility and control."
+  about_section: "WUPHF's The AI Office shows technical operators how to run AI agents with live visibility, clean handoffs, and mid-flight steering. Every episode solves one multi-agent operating problem, shows the system live, and gives you a benchmark, checklist, or runbook you can use immediately."
+  banner:
+    headline: "See Your AI Agents Work"
+    subhead: "Steer them mid-flight"
+    cta_strip: "Benchmark + migration kit below"
+  brand_voice:
+    writing_style:
+      - "plainspoken"
+      - "operator-grade"
+      - "skeptical"
+      - "slightly dramatic when earned"
+    narration_direction: "Direct technical operator with tension in the hook and zero patience for benchmark theater."
+    banned_modes:
+      - "generic AI news voice"
+      - "make money with AI framing"
+      - "benchmark theater without workflow proof"
+      - "enterprise cosplay"
+  render_defaults:
+    format: "long_form_first"
+    target_duration_minutes: "8-12"
+    scene_order:
+      - "cold_open"
+      - "operating_problem"
+      - "live_office_setup"
+      - "intervention_moment"
+      - "proof_asset_reveal"
+      - "cta_endcard"
+    music_direction: "restrained tension under the hook, sparse pulse during live intervention, cleaner bed during the walkthrough"
+    visual_motifs:
+      - "shared channels"
+      - "agent traces"
+      - "terminal panes"
+      - "approval prompts"
+      - "worktrees"
+      - "context graph cards"
+  playlists:
+    - id: "live_steering_demos"
+      title: "Live Steering Demos"
+      description: "See multi-agent workflows run live with real interruptions, corrections, and handoffs."
+    - id: "migration_comparisons"
+      title: "Migration and Comparison"
+      description: "Paperclip comparisons, switch paths, and runtime tradeoffs for small technical teams."
+    - id: "agent_ops_fixes"
+      title: "Agent Ops Fixes"
+      description: "How to fix token burn, idle waste, rate-limit panic, and hallucinated completion."
+    - id: "ai_team_builds"
+      title: "AI Team Builds"
+      description: "Role-based agent teams for GTM, support, content, research, and launch work."
+    - id: "world_model_context"
+      title: "World Model Context"
+      description: "Why shared context and memory change agent quality, coordination, and trust."
+    - id: "runbooks_templates"
+      title: "Runbooks and Templates"
+      description: "Checklists, scorecards, and operating assets you can deploy immediately."
+
+audience:
+  primary_icp:
+    - "AI operators"
+    - "GTM engineers"
+    - "technical founders"
+    - "Claude Pro and Max users running 3+ agents"
+    - "teams evaluating or leaving Paperclip"
+  team_size: "small technical teams running 3+ agents"
+  budget_signal: "already paying for premium model plans, agent tooling, or migration time"
+  jobs_to_be_done:
+    - "Show me how to see and interrupt agents before bad work compounds."
+    - "Give me the shortest path away from blind orchestration and ticket-queue workflows."
+    - "Help me run 3+ agents without idle burn, workspace chaos, or fake completion."
+  pain_words:
+    - "token burn"
+    - "idle waste"
+    - "weak visibility"
+    - "workspace chaos"
+    - "hallucinated completion"
+    - "rate-limit panic"
+    - "human middleware"
+
+launch_defaults:
+  flagship_episode_id: "wuphf_vid_01"
+  first_four_publish_order:
+    - "wuphf_vid_01"
+    - "wuphf_vid_02"
+    - "wuphf_vid_03"
+    - "wuphf_vid_04"
+  cadence:
+    publish_days:
+      - "Monday"
+      - "Thursday"
+    review_day: "Wednesday"
+    cutdown_day: "Friday"
+  testing_rules:
+    - "Every episode must prove one operating point, not gesture at a trend."
+    - "The footage must show real traces, real channels, real work, or real artifacts."
+    - "Titles should lead with pain or contrast, not the tool brand unless the tool is the topic."
+    - "Do not hide failure. Debugging and correction are part of the story."
+
+offer_defaults:
+  primary_lead_magnet:
+    offer_id: "cep_benchmark_migration_checklist"
+    name: "CEP Benchmark + Migration Checklist"
+    promise: "Measure idle waste, visibility gaps, and migration readiness before you switch runtimes blind."
+    asset_stack:
+      - "PDF"
+      - "benchmark sheet"
+      - "migration checklist"
+    landing_page:
+      slug: "/benchmark-migration-kit"
+      headline: "See where your agent runtime leaks money before you migrate."
+      subhead: "Get the benchmark sheet and migration checklist for teams running 3+ agents."
+      cta_label: "Get the Benchmark Kit"
+      delivery_method: "email capture plus instant thank-you page"
+      status: "needs_real_domain_before_publish"
+  supporting_assets:
+    - offer_id: "ai_office_starter_pack"
+      canonical_asset: "AI Office Starter Pack"
+    - offer_id: "paperclip_exit_kit"
+      canonical_asset: "Paperclip Exit Kit"
+    - offer_id: "agent_manager_scorecard"
+      canonical_asset: "Agent Manager Scorecard"
+    - offer_id: "multi_agent_operating_playbook"
+      canonical_asset: "Multi-Agent Operating Playbook"
+  revenue_ladder:
+    - "free_benchmark"
+    - "product_demo_or_pilot"
+    - "affiliate_stack_pages"
+    - "digital_products"
+    - "agent_ops_teardown"
+    - "implementation_sprint"
+    - "sponsor"
+    - "ads"
+
+distribution_defaults:
+  description_structure:
+    - "primary_cta"
+    - "video_bullets"
+    - "tools_mentioned"
+    - "secondary_cta"
+    - "disclosure"
+  pinned_comment_structure:
+    - "primary_cta"
+    - "workflow_request_prompt"
+  title_rules:
+    min_chars: 45
+    max_chars: 68
+    must_include:
+      - "one pain point or one contrast"
+      - "one operating payoff"
+    avoid:
+      - "generic AI news framing"
+      - "make money"
+      - "passive income"
+      - "full autopilot"
+  thumbnail_rules:
+    max_words: 4
+    required_pattern: "one focal object, one intervention moment, one short contrast phrase"
+    avoid:
+      - "robot faces"
+      - "money stacks"
+      - "dashboard collage overload"
+      - "neon slop"
+  link_placeholders:
+    owned_audience_base_url: "{{owned_audience_base_url}}"
+    product_base_url: "{{product_base_url}}"
+    audit_base_url: "{{audit_base_url}}"
+    stack_base_url: "{{stack_base_url}}"
+  utm_defaults:
+    source: "youtube"
+    mediums:
+      longform_description: "longform_description"
+      pinned_comment: "pinned_comment"
+    campaign_pattern: "{{offer_id}}-{{video_slug}}"
+
+email_defaults:
+  welcome_sequence:
+    - day_offset: 0
+      subject: "Your CEP benchmark and migration checklist"
+      goal: "deliver the asset and frame the operator channel promise"
+    - day_offset: 2
+      subject: "The first thing I check before I trust a multi-agent workflow"
+      goal: "send subscribers back to the flagship episode"
+    - day_offset: 5
+      subject: "Want us to map your agent workflow?"
+      goal: "introduce the audit or demo path after value delivery"
+
+qa_defaults:
+  hard_gates:
+    - "One operating point per video."
+    - "One primary CTA per video."
+    - "The proof asset appears before the CTA."
+    - "Failure, debugging, or correction remains visible when it matters."
+    - "Title, thumbnail, and first description lines must point at the same promise."
+    - "No sponsor placement before proof."
+    - "No compliance or claim-risk issues."
+  soft_gates:
+    - "The workflow looks controllable by a real operator."
+    - "The language sounds like a skeptical builder, not a hype creator."
+    - "The asset helps the viewer act immediately, not just admire the demo."
+
+approval_boundaries:
+  require_human_approval_for:
+    - "linking a real YouTube account"
+    - "linking paid third-party tools or buying subscriptions"
+    - "live publishing any video"
+    - "accepting sponsor or affiliate legal terms"
+    - "sharing customer-sensitive footage or data"
+    - "committing real spend"

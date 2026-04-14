@@ -1,0 +1,182 @@
+channel:
+  primary_brand: "Back Office AI"
+  thesis: "AI Back Office for Small Teams"
+
+governing_rules:
+  - "Default to affiliate before sponsor until one pillar has repeatable view floors."
+  - "Only promote tools that are directly used or meaningfully compared in the episode."
+  - "Each upload gets one monetization lane: lead capture, affiliate, product, service, or sponsor."
+  - "Sponsor reads are allowed only after the workflow proof lands. No cold open sponsor clutter."
+  - "All affiliate and sponsor links require disclosure-ready copy in the publish payload."
+
+workflow_matrix:
+  - workflow: "meeting_notes_to_tasks"
+    best_pillars:
+      - function_specific_systems
+      - before_after_rebuilds
+    lead_offer: workflow_checklists
+    affiliate_categories:
+      - meeting_tools
+      - automation_and_docs
+    sponsor_categories:
+      - meeting_tools
+      - automation
+    proof_required: "show note capture, task routing, and output quality on one realistic meeting"
+    sponsor_ready_when: "2+ videos in this lane beat baseline CTR and click-through"
+    red_flags:
+      - "tool-first demo with no workflow"
+      - "claims of perfect summaries"
+
+  - workflow: "follow_up_and_lead_routing"
+    best_pillars:
+      - role_replacement
+      - function_specific_systems
+      - tool_stack_teardowns
+    lead_offer: workflow_checklists
+    affiliate_categories:
+      - crm_and_outreach
+    sponsor_categories:
+      - crm
+      - automation
+    proof_required: "show routing logic, follow-up drafting, and owner handoff"
+    sponsor_ready_when: "affiliate click-to-trial proves buyer intent"
+    red_flags:
+      - "promising fully automated selling"
+      - "no human review step on live outbound"
+
+  - workflow: "support_triage"
+    best_pillars:
+      - before_after_rebuilds
+      - tool_stack_teardowns
+    lead_offer: function_template_packs
+    affiliate_categories:
+      - helpdesk_and_support
+      - automation_and_docs
+    sponsor_categories:
+      - support
+      - automation
+    proof_required: "show intake, categorization, escalation, and response drafting"
+    sponsor_ready_when: "support episodes earn comments from real operators"
+    red_flags:
+      - "sounding like customer support can be left unattended"
+      - "no escalation logic"
+
+  - workflow: "client_onboarding"
+    best_pillars:
+      - function_specific_systems
+      - before_after_rebuilds
+    lead_offer: workflow_checklists
+    affiliate_categories:
+      - automation_and_docs
+    sponsor_categories:
+      - automation
+      - analytics
+    proof_required: "show kickoff email, checklist progression, and client-visible output"
+    sponsor_ready_when: "onboarding videos produce audit or sprint intent"
+    red_flags:
+      - "generic sequence templates with no service context"
+      - "missing human handoff points"
+
+  - workflow: "reporting_and_dashboards"
+    best_pillars:
+      - function_specific_systems
+      - templates_and_playbooks
+    lead_offer: workflow_checklists
+    affiliate_categories:
+      - automation_and_docs
+      - crm_and_outreach
+    sponsor_categories:
+      - analytics
+      - automation
+    proof_required: "show source data, transformation, and final owner-ready brief"
+    sponsor_ready_when: "reporting topics keep retention above baseline despite being less sexy"
+    red_flags:
+      - "dashboard theater"
+      - "metrics with no operational use"
+
+  - workflow: "sops_and_documentation"
+    best_pillars:
+      - templates_and_playbooks
+      - function_specific_systems
+    lead_offer: low_ticket_template_packs
+    affiliate_categories:
+      - automation_and_docs
+    sponsor_categories:
+      - automation
+    proof_required: "show draft generation, cleanup, versioning, and team handoff"
+    sponsor_ready_when: "template-pack conversions are live"
+    red_flags:
+      - "publishing raw AI output"
+      - "pretending documentation writes itself"
+
+  - workflow: "proposal_and_post_call_ops"
+    best_pillars:
+      - before_after_rebuilds
+      - function_specific_systems
+    lead_offer: function_template_packs
+    affiliate_categories:
+      - meeting_tools
+      - crm_and_outreach
+    sponsor_categories:
+      - crm
+      - meeting_tools
+    proof_required: "show call notes flowing into proposal, tasks, and CRM updates"
+    sponsor_ready_when: "proposal videos generate service-intent comments"
+    red_flags:
+      - "robotic client language"
+      - "no review before proposal send"
+
+category_policies:
+  meeting_tools:
+    lane_type: "affiliate_first"
+    conversion_signal: "click-to-trial or comment references to existing note-taking pain"
+    approved_slots:
+      - description_primary_tools_block
+      - pinned_comment_secondary_link
+      - midroll_after_framework
+    avoid:
+      - "sponsor read before workflow payoff"
+  crm_and_outreach:
+    lane_type: "affiliate_then_sponsor"
+    conversion_signal: "description clicks and audit-intent comments"
+    approved_slots:
+      - description_primary_tools_block
+      - stack-comparison landing page
+      - post-proof sponsor segment
+    avoid:
+      - "claiming a tool replaces all sales judgment"
+  helpdesk_and_support:
+    lane_type: "affiliate_then_sponsor"
+    conversion_signal: "operators ask for implementation detail in comments"
+    approved_slots:
+      - description_tools_block
+      - pinned comment if the whole video is about support
+      - newsletter inclusion
+    avoid:
+      - "promoting any tool that weakens human escalation"
+  automation_and_docs:
+    lane_type: "hybrid"
+    conversion_signal: "template downloads and stack-page clicks"
+    approved_slots:
+      - description_tools_block
+      - resource hub
+      - sponsor mention after the system diagram
+    avoid:
+      - "listing five automation vendors in one upload"
+  analytics:
+    lane_type: "sponsor_later"
+    conversion_signal: "reporting videos hold retention and drive audit interest"
+    approved_slots:
+      - post-proof midroll
+      - newsletter inclusion
+    avoid:
+      - "forcing analytics sponsors into non-reporting videos"
+
+disclosures:
+  affiliate: "Some links may be affiliate links. If you buy through them, it helps fund more operator-grade breakdowns at no extra cost to you."
+  sponsor: "This video includes a paid promotion. The sponsor is linked below."
+
+approval_gates:
+  - "Any signed sponsor agreement"
+  - "Any paid deliverable or guarantee to a partner"
+  - "Any sponsored mention that has not been reviewed for claim safety"

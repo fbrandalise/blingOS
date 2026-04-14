@@ -29,7 +29,7 @@ func inferTaskType(owner, title, details string) string {
 		return "incident"
 	case containsAnyTaskFragment(text, "launch", "campaign", "announce", "rollout", "go to market"):
 		return "launch"
-	case containsAnyTaskFragment(text, "research", "investigate", "evaluate", "compare", "analyze"):
+	case containsAnyTaskFragment(text, "research", "investigate", "evaluate", "compare", "analyze", "audit", "thesis", "framework", "recommend"):
 		return "research"
 	case containsAnyTaskFragment(text, "feature", "build", "implement", "ship", "signup", "flow"):
 		return "feature"
@@ -49,13 +49,24 @@ func taskNeedsStructuredReview(task *teamTask) bool {
 	if task == nil {
 		return false
 	}
+	if strings.EqualFold(strings.TrimSpace(task.ExecutionMode), "local_worktree") {
+		return true
+	}
 	template := pipelineTemplate(task.TaskType)
-	return template.ReviewRequired || task.ExecutionMode == "local_worktree"
+	if !template.ReviewRequired {
+		return false
+	}
+	switch strings.TrimSpace(strings.ToLower(task.Owner)) {
+	case "eng", "fe", "be", "ai":
+		return true
+	default:
+		return false
+	}
 }
 
 func taskDefaultExecutionMode(owner, taskType string) string {
 	switch strings.TrimSpace(strings.ToLower(owner)) {
-	case "fe", "be", "ai":
+	case "eng", "fe", "be", "ai":
 		if taskType == "feature" || taskType == "bugfix" || taskType == "incident" {
 			return "local_worktree"
 		}

@@ -1,0 +1,345 @@
+channel:
+  primary_brand: "Back Office AI"
+  thesis: "AI Back Office for Small Teams"
+  brand_promise: "Practical AI systems for small teams that are tired of doing ops the hard way."
+  launch_wedge: "Founder-led service businesses and agencies with 2-20 people"
+  expansion_wedges:
+    - "fractional operators and executive assistants"
+    - "small SaaS teams without dedicated RevOps or support ops"
+    - "generalist operators running cross-functional workflows"
+  anti_positioning:
+    - "generic AI news"
+    - "make money with AI hype"
+    - "passive income fantasy content"
+    - "enterprise theater for teams that need practical execution"
+
+brand_system:
+  recommendation:
+    name: "Back Office AI"
+    reason: "Short, ownable, and broad enough to expand from agencies into the wider small-team ops market."
+  naming_options:
+    - id: back_office_ai
+      name: "Back Office AI"
+      verdict: "recommended"
+      positioning: "Build the AI back office before you hire for manual chaos."
+      strengths:
+        - "Brandable and easy to remember"
+        - "Signals systems and workflows, not generic tool reviews"
+        - "Can stretch into products, audits, and sponsor inventory cleanly"
+      tradeoffs:
+        - "Needs the first videos to define what 'AI back office' means"
+    - id: small_team_ai_ops
+      name: "Small Team AI Ops"
+      verdict: "safe_fallback"
+      positioning: "Operational AI for lean teams that need leverage fast."
+      strengths:
+        - "Instantly clear audience fit"
+        - "Search-friendly from day one"
+      tradeoffs:
+        - "Feels more descriptive than brandable"
+        - "Harder to extend into a broader media brand"
+    - id: ai_ops_for_small_teams
+      name: "AI Ops for Small Teams"
+      verdict: "literal_fallback"
+      positioning: "Practical automation for teams without enterprise headcount."
+      strengths:
+        - "Very clear on promise and audience"
+        - "Low confusion risk in thumbnails and bios"
+      tradeoffs:
+        - "Long and less memorable"
+        - "Sounds like a content category more than a channel brand"
+    - id: operator_stack
+      name: "Operator Stack"
+      verdict: "future_variant"
+      positioning: "The systems stack for founder-led operators."
+      strengths:
+        - "Sharper and more premium"
+        - "Can support software and sponsor positioning later"
+      tradeoffs:
+        - "Too abstract for the first 10 videos"
+        - "Needs stronger brand equity before use"
+  voice:
+    core_traits:
+      - "operator-grade"
+      - "plainspoken"
+      - "opinionated"
+      - "calmly skeptical"
+    banned_modes:
+      - "AI hype guru"
+      - "bro-marketing urgency"
+      - "earnings-flex thumbnails"
+      - "overpromising full autonomy"
+  visual_direction:
+    theme: "Clean operational systems, not sci-fi AI"
+    palette:
+      paper: "#F6F1E8"
+      charcoal: "#1F2328"
+      steel: "#496A81"
+      signal_red: "#C94F3D"
+      ledger_green: "#7A8F3B"
+    motifs:
+      - "checklists"
+      - "inboxes"
+      - "calendar blocks"
+      - "CRM stages"
+      - "workflow arrows"
+      - "dashboard cards"
+    composition_rules:
+      - "One focal object per thumbnail."
+      - "Show the mess first, then the system."
+      - "Prefer diagrams, UI cards, and simple objects over faces or mascots."
+      - "Keep text large, short, and contrast-heavy."
+
+audience:
+  primary_icp:
+    - "agency owners"
+    - "consultancy founders"
+    - "small B2B service firms"
+    - "fractional operators"
+  profile:
+    team_size: "2-20"
+    budget_signal: "already paying for 2-10 software tools"
+    constraints:
+      - "no dedicated ops architect"
+      - "manual work spread across inboxes, docs, meetings, and follow-up"
+      - "needs execution help more than AI theory"
+  pains:
+    - "inbox overload"
+    - "follow-up drift"
+    - "messy client onboarding"
+    - "meeting sprawl"
+    - "manual reporting"
+    - "support handoff chaos"
+  jobs_to_be_done:
+    - "Show me one workflow I can deploy this week."
+    - "Help me avoid hiring for broken manual work."
+    - "Make my team look organized without enterprise software."
+
+editorial_position:
+  tone:
+    - "practical"
+    - "opinionated"
+    - "operations-first"
+    - "software-literate"
+  rules:
+    - "One workflow per video."
+    - "Each script needs a point of view and an operating framework."
+    - "Show deployable systems, not abstract tool tours."
+    - "Use original narration, diagrams, and workflow maps."
+
+packaging_patterns:
+  title_families:
+    - id: role_build
+      template: "I Built an AI [Role] for a [Audience]"
+      best_for:
+        - "role_replacement"
+      example: "I Built an AI Inbox Operator for a 5-Person Business"
+    - id: task_replacement
+      template: "Replace [Task] With This AI [System]"
+      best_for:
+        - "function_specific_systems"
+      example: "Replace Your Weekly Status Report With This AI Ops Loop"
+    - id: teardown
+      template: "The Best AI Stack for [Specific Job]"
+      best_for:
+        - "tool_stack_teardowns"
+      example: "The Best AI Stack for Follow-Ups If You Have No SDR Team"
+    - id: rebuild
+      template: "We Rebuilt [Workflow] in [N] Steps"
+      best_for:
+        - "before_after_rebuilds"
+      example: "We Rebuilt Customer Support for a Tiny Team in 4 Steps"
+    - id: list_with_filter
+      template: "[N] Tasks Every [Audience] Should Automate Before [Trigger]"
+      best_for:
+        - "templates_and_playbooks"
+      example: "7 Tasks Every Founder Should Automate Before Hiring"
+  thumbnail_families:
+    - id: chaos_vs_system
+      text_pattern: "FROM MESS"
+      visual_anchor: "split frame with messy workflow on left and cleaned system on right"
+      best_for:
+        - "before_after_rebuilds"
+        - "function_specific_systems"
+    - id: role_in_box
+      text_pattern: "AI [ROLE]"
+      visual_anchor: "single dashboard or inbox card framed like a hire or function"
+      best_for:
+        - "role_replacement"
+    - id: stack_scorecard
+      text_pattern: "BEST STACK"
+      visual_anchor: "three-tool scorecard or stack ladder with one clear winner"
+      best_for:
+        - "tool_stack_teardowns"
+    - id: operating_checklist
+      text_pattern: "[N] FIXES"
+      visual_anchor: "checklist or template sheet with one highlighted item"
+      best_for:
+        - "templates_and_playbooks"
+  packaging_guards:
+    - "Thumbnail text should not repeat the full title."
+    - "Every title must signal one workflow, not a grab-bag."
+    - "Use pain words the viewer already says: inbox, follow-up, onboarding, support, reporting, handoff."
+    - "If the title uses a tool name, the thumbnail should emphasize the workflow problem instead."
+
+content_pillars:
+  - id: role_replacement
+    priority: 1
+    viewer_promise: "Replace the first 2-3 hours of a role with one usable system."
+    search_buckets:
+      - "AI assistant for founders"
+      - "AI SDR workflow"
+      - "AI executive assistant"
+      - "automate admin work"
+    primary_cta: "ai_back_office_starter_pack"
+  - id: function_specific_systems
+    priority: 2
+    viewer_promise: "Fix one broken operating function end to end."
+    search_buckets:
+      - "automate client onboarding"
+      - "AI follow-up workflow"
+      - "AI reporting system"
+      - "meeting notes to tasks"
+    primary_cta: "workflow_checklists"
+  - id: tool_stack_teardowns
+    priority: 3
+    viewer_promise: "Pick the lightest stack for one business job and explain the tradeoffs."
+    search_buckets:
+      - "best AI tools for agencies"
+      - "best CRM for founder-led sales"
+      - "best AI meeting tool"
+      - "best support stack for small teams"
+    primary_cta: "affiliate_stack_pages"
+  - id: before_after_rebuilds
+    priority: 4
+    viewer_promise: "Turn a messy manual workflow into a cleaner system."
+    search_buckets:
+      - "before and after automation"
+      - "fix broken onboarding process"
+      - "support workflow redesign"
+      - "sales handoff workflow"
+    primary_cta: "ai_back_office_audit"
+  - id: templates_and_playbooks
+    priority: 5
+    viewer_promise: "Hand viewers a ready-made asset they can implement immediately."
+    search_buckets:
+      - "workflow templates for small teams"
+      - "AI SOP template"
+      - "automation checklist"
+      - "sales follow-up templates"
+    primary_cta: "low_ticket_template_packs"
+
+cadence:
+  phases:
+    - window: "weeks_1_4"
+      long_form_per_week: 2
+      shorts_per_week: 0
+      focus: "prove packaging and CTA fit"
+    - window: "weeks_5_8"
+      long_form_per_week: 2
+      shorts_per_week: 1
+      focus: "repurpose winning topics into cutdowns"
+    - window: "weeks_9_12"
+      long_form_per_week: 2
+      shorts_per_week: 2
+      focus: "push the winning pillar plus low-ticket CTAs"
+  weekly_rhythm:
+    monday: "publish long-form case study or rebuild"
+    wednesday: "review comments, score topics, and adjust offer routing"
+    thursday: "publish long-form teardown or workflow explainer"
+    friday: "ship short cutdowns and newsletter recap from the winning long-form"
+  quality_gates:
+    - "repeatable packaging quality"
+    - "consistent publish payload QA"
+    - "one strong CTA destination per upload"
+
+seo:
+  search_intent_model:
+    pain_queries:
+      - "How do I automate follow-ups?"
+      - "How do I manage meeting notes and action items?"
+      - "How do I automate client onboarding?"
+    replacement_queries:
+      - "AI assistant for small business"
+      - "AI operations manager"
+      - "AI customer support workflow"
+    comparison_queries:
+      - "best AI stack for agencies"
+      - "best meeting note taker for small teams"
+      - "CRM for founder-led sales"
+    system_queries:
+      - "build an AI workflow"
+      - "AI SOP system"
+      - "automated reporting for small business"
+  metadata_rules:
+    - "Lead titles with the task, role, or operational mess before the tool name."
+    - "Keep titles focused on one workflow and one promise."
+    - "Use the first two description lines for the primary CTA and the outcome."
+    - "Put the main keyword family in the title, first paragraph, and first spoken minute."
+    - "Group related episodes into playlists by function: sales, support, meetings, onboarding, reporting."
+  refresh_loop:
+    day_2: "swap thumbnail or title if CTR is weak"
+    day_7: "review retention drop-offs and rewrite hook patterns"
+    day_30: "update description links, cards, and related-playlist routing"
+
+distribution:
+  primary_channels:
+    - id: youtube_long_form
+      role: "core discovery and conversion surface"
+    - id: youtube_shorts
+      role: "highlight reels from proven long-form topics"
+    - id: email_list
+      role: "owned audience, product launches, audit offers"
+    - id: linkedin_founder_distribution
+      role: "reach operator-heavy buyers with one insight per episode"
+  per_video_outputs:
+    - "1 long-form video"
+    - "1 pinned comment"
+    - "1 email send or digest inclusion"
+    - "1 LinkedIn post built around the core framework"
+    - "1-2 short cutdowns only if the long-form earns it"
+  repurposing_rules:
+    - "Do not create Shorts from weak long-form topics."
+    - "Pull shorts from the strongest hook, teardown moment, or before/after contrast."
+    - "Use LinkedIn to summarize the operating lesson, not to dump the whole script."
+    - "Email should drive back to the flagship video or offer, never both equally."
+  feedback_loops:
+    - "Mine comments weekly for workflow requests and objections."
+    - "Track which pain words show up in high-retention videos."
+    - "Promote recurring requests into the next topic backlog."
+
+revenue_engine:
+  ladder:
+    - stage: 1
+      name: "lead_capture"
+      monetization: "starter packs and checklists"
+    - stage: 2
+      name: "affiliate_revenue"
+      monetization: "workflow-matched software recommendations"
+    - stage: 3
+      name: "digital_products"
+      monetization: "template packs and playbooks"
+    - stage: 4
+      name: "services"
+      monetization: "audits and implementation sprints"
+    - stage: 5
+      name: "sponsorships"
+      monetization: "operator software sponsors"
+    - stage: 6
+      name: "ads"
+      monetization: "YouTube ad revenue as upside"
+  governing_rule: "Each upload gets one primary CTA and one fallback CTA."
+
+scorecard:
+  packaging_targets:
+    long_form_ctr: "4.5%+ by video 6"
+    first_30_second_retention: "70%+"
+    average_view_duration: "40%+ on 8-12 minute videos"
+  conversion_targets:
+    lead_magnet_opt_in: "30%+"
+    description_click_rate: "1.5%+"
+    low_ticket_offer_conversion: "1-3% of qualified landing traffic"
+  kill_rules:
+    - "Drop topics that get views without clicks."
+    - "Drop topics that get clicks without retention."
+    - "Delay sponsors until one pillar shows repeatable view floors."

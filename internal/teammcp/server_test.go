@@ -223,6 +223,57 @@ func TestHandleTeamChannelCreateTriggersReconfigure(t *testing.T) {
 	}
 }
 
+func TestHandleTeamChannelCreateRequiresExplicitSlug(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("WUPHF_CHANNEL", "general")
+
+	b := team.NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("start broker: %v", err)
+	}
+	defer b.Stop()
+
+	t.Setenv("WUPHF_TEAM_BROKER_URL", "http://"+b.Addr())
+	t.Setenv("WUPHF_BROKER_TOKEN", b.Token())
+
+	result, _, err := handleTeamChannel(context.Background(), nil, TeamChannelArgs{
+		Action:      "create",
+		Name:        "launch",
+		Description: "Launch execution channel",
+		Members:     []string{"pm", "fe"},
+		MySlug:      "ceo",
+	})
+	if err != nil {
+		t.Fatalf("handleTeamChannel returned unexpected error: %v", err)
+	}
+	if result == nil || !result.IsError {
+		t.Fatalf("expected tool error result when slug is omitted, got %+v", result)
+	}
+	if got := textFromResult(t, result); !strings.Contains(got, "channel slug is required") {
+		t.Fatalf("expected explicit slug message, got %q", got)
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/channels", b.Addr()), nil)
+	req.Header.Set("Authorization", "Bearer "+b.Token())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("fetch channels: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var channelsResult struct {
+		Channels []struct {
+			Slug string `json:"slug"`
+		} `json:"channels"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&channelsResult); err != nil {
+		t.Fatalf("decode channels: %v", err)
+	}
+	if len(channelsResult.Channels) != 1 || channelsResult.Channels[0].Slug != "general" {
+		t.Fatalf("expected only general channel to remain, got %+v", channelsResult.Channels)
+	}
+}
+
 func TestHandleHumanMessageUsesDirectSessionLabelInOneOnOneMode(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("WUPHF_ONE_ON_ONE", "1")
@@ -1044,10 +1095,12 @@ func TestHandleTeamPlanCreatesDependentBlockedTasks(t *testing.T) {
 		Channel: "general",
 		MySlug:  "ceo",
 		Tasks: []struct {
-			Title     string   `json:"title" jsonschema:"Task title"`
-			Assignee  string   `json:"assignee" jsonschema:"Agent slug to own this task"`
-			Details   string   `json:"details,omitempty" jsonschema:"Optional task details"`
-			DependsOn []string `json:"depends_on,omitempty" jsonschema:"Titles or IDs of tasks this depends on"`
+			Title         string   `json:"title" jsonschema:"Task title"`
+			Assignee      string   `json:"assignee" jsonschema:"Agent slug to own this task"`
+			Details       string   `json:"details,omitempty" jsonschema:"Optional task details"`
+			TaskType      string   `json:"task_type,omitempty" jsonschema:"Optional task type such as research, feature, launch, follow_up, bugfix, or incident"`
+			ExecutionMode string   `json:"execution_mode,omitempty" jsonschema:"Optional execution mode such as office or local_worktree"`
+			DependsOn     []string `json:"depends_on,omitempty" jsonschema:"Titles or IDs of tasks this depends on"`
 		}{
 			{Title: "Research competitors", Assignee: "research"},
 			{Title: "Write positioning copy", Assignee: "marketing", DependsOn: []string{"Research competitors"}},
@@ -1078,4 +1131,94 @@ func TestHandleTeamPlanCreatesDependentBlockedTasks(t *testing.T) {
 			t.Fatalf("research task should not be BLOCKED: %q", line)
 		}
 	}
+}
+
+func TestHandleTeamPlanPreservesTaskMetadata(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	b := team.NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("start broker: %v", err)
+	}
+	defer b.Stop()
+
+	t.Setenv("WUPHF_TEAM_BROKER_URL", "http://"+b.Addr())
+	t.Setenv("WUPHF_BROKER_TOKEN", b.Token())
+
+	_, _, err := handleTeamPlan(context.Background(), nil, TeamPlanArgs{
+		Channel: "general",
+		MySlug:  "ceo",
+		Tasks: []struct {
+			Title         string   `json:"title" jsonschema:"Task title"`
+			Assignee      string   `json:"assignee" jsonschema:"Agent slug to own this task"`
+			Details       string   `json:"details,omitempty" jsonschema:"Optional task details"`
+			TaskType      string   `json:"task_type,omitempty" jsonschema:"Optional task type such as research, feature, launch, follow_up, bugfix, or incident"`
+			ExecutionMode string   `json:"execution_mode,omitempty" jsonschema:"Optional execution mode such as office or local_worktree"`
+			DependsOn     []string `json:"depends_on,omitempty" jsonschema:"Titles or IDs of tasks this depends on"`
+		}{
+			{Title: "Build the studio control plane", Assignee: "eng", TaskType: "feature", ExecutionMode: "local_worktree"},
+			{Title: "Package the launch slate", Assignee: "gtm", TaskType: "launch", ExecutionMode: "office"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handleTeamPlan: %v", err)
+	}
+
+	var result brokerTasksResponse
+	if err := brokerGetJSON(context.Background(), "/tasks?channel=general&include_done=true", &result); err != nil {
+		t.Fatalf("fetch tasks: %v", err)
+	}
+
+	found := map[string]brokerTaskSummary{}
+	for _, task := range result.Tasks {
+		found[task.Title] = task
+	}
+	if got := found["Build the studio control plane"]; got.TaskType != "feature" || got.ExecutionMode != "local_worktree" {
+		t.Fatalf("expected feature/local_worktree metadata, got %+v", got)
+	}
+	if got := found["Package the launch slate"]; got.TaskType != "launch" || got.ExecutionMode != "office" {
+		t.Fatalf("expected launch/office metadata, got %+v", got)
+	}
+}
+
+func TestHandleTeamTaskCreatePreservesTaskMetadata(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	b := team.NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("start broker: %v", err)
+	}
+	defer b.Stop()
+
+	t.Setenv("WUPHF_TEAM_BROKER_URL", "http://"+b.Addr())
+	t.Setenv("WUPHF_BROKER_TOKEN", b.Token())
+
+	_, _, err := handleTeamTask(context.Background(), nil, TeamTaskArgs{
+		Action:        "create",
+		Channel:       "general",
+		Title:         "Implement studio foundations",
+		Owner:         "eng",
+		TaskType:      "feature",
+		ExecutionMode: "local_worktree",
+		MySlug:        "ceo",
+	})
+	if err != nil {
+		t.Fatalf("handleTeamTask: %v", err)
+	}
+
+	var result brokerTasksResponse
+	if err := brokerGetJSON(context.Background(), "/tasks?channel=general&include_done=true", &result); err != nil {
+		t.Fatalf("fetch tasks: %v", err)
+	}
+
+	for _, task := range result.Tasks {
+		if task.Title != "Implement studio foundations" {
+			continue
+		}
+		if task.TaskType != "feature" || task.ExecutionMode != "local_worktree" {
+			t.Fatalf("expected feature/local_worktree metadata, got %+v", task)
+		}
+		return
+	}
+	t.Fatal("expected created task to be present")
 }

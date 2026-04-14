@@ -1,0 +1,125 @@
+metadata:
+  id: "wuphf_vid_01_steer_mid_flight_launch_packet"
+  version: 1
+  status: "qa_ready_dry_run"
+  updated_at: "2026-04-14"
+  owner: "gtm"
+  source_backlog_id: "wuphf_vid_01"
+  source_channel_pack: "../wuphf-operator-channel-pack.yaml"
+
+episode:
+  episode_id: "wuphf_vid_01"
+  working_slug: "watch-4-ai-agents-steer-mid-flight"
+  pillar: "see_and_steer_demos"
+  audience: "AI operators, GTM engineers, and technical founders running 3+ agents"
+  workflow: "live multi-agent steering and intervention"
+  search_intent: "multi-agent orchestration visibility"
+  promise: "Show exactly how a human can interrupt, redirect, and recover a live four-agent workflow before idle burn and bad handoffs compound."
+  proof_asset:
+    name: "CEP Benchmark + Migration Checklist"
+    type: "benchmark_and_checklist"
+    delivery_offer_id: "cep_benchmark_migration_checklist"
+
+packaging:
+  final_title: "Watch 4 AI Agents Work While I Steer Them Mid-Flight"
+  backup_titles:
+    - "I Ran 4 AI Agents Live and Steered the Mess in Real Time"
+    - "If You Cannot Interrupt Your AI Agents, You Do Not Have a Team"
+  title_family: "live_product_demo"
+  thumbnail:
+    family: "visibility_vs_void"
+    text: "STEER THEM LIVE"
+    focal_object: "shared office thread with four active agents and a human intervention callout"
+    visual_notes:
+      - "show four agent lanes with visibly different work states"
+      - "highlight one human intervention moment in red so the steering action is unmistakable"
+      - "keep the office UI legible enough to feel real, not like a fake dashboard collage"
+    avoid:
+      - "robot faces"
+      - "money imagery"
+      - "large generic AI logos"
+      - "benchmark-chart thumbnails with no workflow footage"
+  hook_promise: "If you cannot interrupt your agents while they work, you are not running a team. You are filing tickets into a void."
+
+cta_plan:
+  primary_offer_id: "wuphf_beta_demo"
+  primary_offer_name: "WUPHF beta / demo"
+  primary_link:
+    label: "Book a WUPHF demo"
+    url_template: "{{product_base_url}}/demo?utm_source=youtube&utm_medium=longform_description&utm_campaign=wuphf_beta_demo-watch-4-ai-agents-steer-mid-flight"
+    status: "needs_real_url_before_publish"
+  secondary_offer_id: "cep_benchmark_migration_checklist"
+  secondary_offer_name: "CEP Benchmark + Migration Checklist"
+  secondary_link:
+    label: "Get the benchmark + migration kit"
+    url_template: "{{owned_audience_base_url}}/benchmark-migration-kit?utm_source=youtube&utm_medium=longform_description&utm_campaign=cep_benchmark_migration_checklist-watch-4-ai-agents-steer-mid-flight"
+    status: "needs_real_url_before_publish"
+  on_screen_line: "If you want the benchmark and migration checklist, it's below. If you want this running for your team, book a demo."
+
+publish_payload:
+  playlist_id: "live_steering_demos"
+  tags:
+    - "multi-agent systems"
+    - "agent orchestration"
+    - "Claude Code"
+    - "WUPHF"
+    - "Paperclip alternative"
+    - "AI operators"
+    - "technical founders"
+  description: |-
+    Want the live-office workflow, not another blind agent queue?
+    Book a WUPHF demo -> {{product_base_url}}/demo?utm_source=youtube&utm_medium=longform_description&utm_campaign=wuphf_beta_demo-watch-4-ai-agents-steer-mid-flight
+
+    In this video:
+    - why blind orchestration creates idle burn, weak visibility, and fake "done" states
+    - how a four-agent office changes once a human can interrupt, redirect, and correct work mid-flight
+    - what to measure before you migrate away from ticket-queue agent workflows
+
+    Tools and systems mentioned:
+    - WUPHF live office runtime
+    - Claude-based agent workflows
+    - shared channel coordination
+    - context and memory via Nex
+
+    If you want the benchmark sheet and migration checklist from this episode:
+    CEP Benchmark + Migration Checklist -> {{owned_audience_base_url}}/benchmark-migration-kit?utm_source=youtube&utm_medium=longform_description&utm_campaign=cep_benchmark_migration_checklist-watch-4-ai-agents-steer-mid-flight
+
+    Some links may be affiliate links. If you buy through them, it helps fund more operator-grade breakdowns at no extra cost to you.
+  pinned_comment: |-
+    Book a WUPHF demo here:
+    {{product_base_url}}/demo?utm_source=youtube&utm_medium=pinned_comment&utm_campaign=wuphf_beta_demo-watch-4-ai-agents-steer-mid-flight
+
+    If you want the benchmark + migration checklist from this episode, grab it here:
+    {{owned_audience_base_url}}/benchmark-migration-kit?utm_source=youtube&utm_medium=pinned_comment&utm_campaign=cep_benchmark_migration_checklist-watch-4-ai-agents-steer-mid-flight
+
+    Reply with the ugliest multi-agent failure mode you've hit so far.
+  chapters:
+    - time: "00:00"
+      label: "Why blind agent queues fail"
+    - time: "00:42"
+      label: "The four-agent office setup"
+    - time: "02:08"
+      label: "The first mid-flight intervention"
+    - time: "04:51"
+      label: "How visibility changes the workflow"
+    - time: "07:14"
+      label: "Benchmark, migration checklist, and next step"
+
+repurposing:
+  shorts_hooks:
+    - "If you cannot interrupt your agents, you do not have a team."
+    - "The most expensive part of agent systems is what happens while nothing useful happens."
+  newsletter_angle: "Why live visibility and mid-flight steering beat blind orchestration for teams running 3+ agents."
+  linkedin_post_angle: "Four agents, one shared office, and one human intervention point is a better demo than another polished benchmark chart."
+
+qa_checklist:
+  must_pass:
+    - "Primary CTA is the WUPHF demo and appears before the benchmark asset."
+    - "Thumbnail says 'STEER THEM LIVE' and the title makes the live steering proof explicit."
+    - "Description first line, hook, and thumbnail all point at visibility plus intervention."
+    - "No claim implies fully autonomous agent management."
+    - "The human intervention moment is shown early enough to prove the wedge before the CTA."
+  block_if:
+    - "The demo link or benchmark asset is not real."
+    - "The video drifts into generic benchmark theater instead of live workflow proof."
+    - "The failure and correction loop is edited out."

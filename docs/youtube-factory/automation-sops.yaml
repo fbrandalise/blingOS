@@ -1,0 +1,184 @@
+channel:
+  primary_brand: "Back Office AI"
+  thesis: "AI Back Office for Small Teams"
+
+operating_rules:
+  - "One workflow per video."
+  - "One primary CTA per video."
+  - "Every episode must produce at least one reusable asset: checklist, template, scorecard, or stack page."
+  - "Do not advance an episode if the proof asset is weak or generic."
+  - "No sponsor slot is allowed before the core framework or rebuild lands."
+
+sops:
+  - id: topic_selection
+    trigger: "weekly backlog review or empty next-publish slot"
+    owner: "gtm"
+    inputs:
+      - "content-backlog.yaml"
+      - "channel-strategy.yaml"
+      - "comment requests"
+      - "recent KPI deltas"
+    steps:
+      - "Filter topics to those matching the current winning audience segment."
+      - "Reject any topic that does not map to one clear workflow and one clear CTA."
+      - "Pick the top-scoring topic that keeps pillar and CTA mix balanced."
+    outputs:
+      - "selected topic packet"
+      - "reason for selection"
+    pass_gates:
+      - "pain is obvious in one sentence"
+      - "proof asset is known before scripting starts"
+      - "monetization lane is declared"
+    stop_conditions:
+      - "topic feels like generic AI news"
+      - "no believable proof asset exists"
+
+  - id: research_packet_build
+    trigger: "topic selected"
+    owner: "eng_or_research_agent"
+    inputs:
+      - "selected topic packet"
+      - "search intent bucket"
+      - "tool and workflow references"
+    steps:
+      - "Document the broken workflow, target viewer, and desired outcome."
+      - "Collect proof points, screenshots to recreate, and a before/after narrative."
+      - "List tool candidates only after the workflow is mapped."
+    outputs:
+      - "research packet"
+      - "source list"
+      - "proof plan"
+    pass_gates:
+      - "packet includes one clear before state and one clear after state"
+      - "tool claims are tied to an actual workflow step"
+      - "search intent is named explicitly"
+    stop_conditions:
+      - "research is just a list of tools"
+      - "packet cannot explain why the viewer should care in 15 words"
+
+  - id: script_brief_generation
+    trigger: "research packet approved"
+    owner: "eng_or_script_agent"
+    inputs:
+      - "research packet"
+      - "channel-strategy.yaml"
+      - "partner-matrix.yaml"
+    steps:
+      - "Write the first-20-second hook around the broken workflow and promised result."
+      - "Build 3-5 major beats that move from chaos to system."
+      - "Insert the proof asset and CTA naturally after the payoff, not before."
+    outputs:
+      - "script brief"
+      - "hook"
+      - "segment beats"
+      - "CTA placement note"
+    pass_gates:
+      - "one dominant argument, not a tool roundup"
+      - "the proof asset appears before the CTA"
+      - "the viewer knows exactly what changed by the end"
+    stop_conditions:
+      - "the brief sounds like a generic listicle"
+      - "there is no concrete framework or rebuild"
+
+  - id: packaging_generation
+    trigger: "script brief approved"
+    owner: "gtm_or_packaging_agent"
+    inputs:
+      - "script brief"
+      - "channel-strategy.yaml"
+      - "content-backlog.yaml"
+    steps:
+      - "Generate 3 title variants from different title families."
+      - "Generate 2 thumbnail concepts from different thumbnail families."
+      - "Choose the pair with the clearest pain word and contrast."
+    outputs:
+      - "final title"
+      - "thumbnail brief"
+      - "backup packaging variant"
+    pass_gates:
+      - "title and thumbnail do not repeat each other line-for-line"
+      - "packaging names the workflow problem in operator language"
+      - "thumbnail has one focal object"
+    stop_conditions:
+      - "title is vague or trend-chasing"
+      - "thumbnail relies on robot faces, money, or logo spam"
+
+  - id: publish_payload_generation
+    trigger: "packaging locked"
+    owner: "eng_or_publish_agent"
+    inputs:
+      - "script brief"
+      - "final title"
+      - "thumbnail brief"
+      - "monetization-registry.yaml"
+      - "partner-matrix.yaml"
+      - "launch-collateral.md"
+    steps:
+      - "Build description with primary CTA, outcome bullets, tools block, fallback CTA, and disclosure."
+      - "Build pinned comment with the main CTA and workflow-request prompt."
+      - "Attach playlist, UTM pattern, and disclosure fields."
+    outputs:
+      - "publish payload"
+      - "description"
+      - "pinned comment"
+      - "link map"
+    pass_gates:
+      - "one primary CTA only"
+      - "all affiliate or sponsor mentions are disclosed"
+      - "playlist routing matches the workflow category"
+    stop_conditions:
+      - "multiple competing CTAs"
+      - "missing disclosure copy"
+
+  - id: pre_publish_qa
+    trigger: "publish payload generated"
+    owner: "gtm"
+    inputs:
+      - "publish payload"
+      - "script brief"
+      - "partner-matrix.yaml"
+    steps:
+      - "Check that title, thumbnail, and first description lines all point at the same promise."
+      - "Check that the monetization lane fits the episode proof."
+      - "Check that the asset being offered is real and relevant."
+    outputs:
+      - "qa verdict"
+      - "fix list if blocked"
+    pass_gates:
+      - "promise consistency across packaging and description"
+      - "offer matches the workflow"
+      - "no compliance or claim-risk issues"
+    stop_conditions:
+      - "offer feels bolted on"
+      - "sponsor placement appears before proof"
+
+  - id: post_publish_optimization
+    trigger: "day 2, day 7, and day 30 after publish"
+    owner: "gtm"
+    inputs:
+      - "CTR"
+      - "retention curve"
+      - "description click-through"
+      - "comment themes"
+    steps:
+      - "If CTR is weak but retention is healthy, test the backup packaging variant."
+      - "If retention drops early, rewrite the next hook in the same lane."
+      - "Promote strong comment themes into the backlog and route winners to products or sponsors."
+    outputs:
+      - "optimization note"
+      - "backlog updates"
+      - "offer-routing changes"
+    pass_gates:
+      - "each change is tied to one metric problem"
+      - "winning topics are added back into the system with a reason"
+    stop_conditions:
+      - "changing title and thumbnail without a metric hypothesis"
+      - "creating Shorts from weak long-form videos"
+
+handoff_artifacts:
+  - "topic packet"
+  - "research packet"
+  - "script brief"
+  - "packaging set"
+  - "publish payload"
+  - "optimization note"

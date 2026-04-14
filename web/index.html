@@ -131,6 +131,315 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; }
 .app-card-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .app-card-meta { font-size: 11px; color: var(--text-tertiary); }
 
+/* ─── Studio control plane ─── */
+.studio-shell { display: flex; flex-direction: column; gap: 16px; }
+.studio-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 28px;
+  border-radius: 24px;
+  border: 1px solid rgba(201, 173, 139, 0.45);
+  background:
+    radial-gradient(circle at top right, rgba(236,178,46,0.26), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(18,100,163,0.16), transparent 30%),
+    linear-gradient(140deg, #fff7ea 0%, #fffdf8 52%, #eef6fb 100%);
+  box-shadow: 0 20px 70px rgba(59,47,47,0.08);
+}
+.studio-hero::after {
+  content: '';
+  position: absolute;
+  inset: auto -48px -64px auto;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(224,30,90,0.12), transparent 68%);
+  pointer-events: none;
+}
+.studio-hero-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 20px;
+}
+.studio-kicker,
+.studio-card-kicker,
+.studio-stage-kicker,
+.studio-queue-label,
+.studio-econ-label,
+.studio-ladder-kicker {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.studio-title {
+  margin-top: 10px;
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  max-width: 11ch;
+}
+.studio-copy {
+  margin-top: 14px;
+  max-width: 60ch;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+.studio-chip-row,
+.studio-actions,
+.studio-hero-metrics,
+.studio-inline-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.studio-chip,
+.studio-mini-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(18,100,163,0.12);
+  background: rgba(255,255,255,0.78);
+  font-size: 12px;
+  color: var(--text);
+}
+.studio-chip-row { margin-top: 18px; }
+.studio-actions { margin-top: 20px; }
+.studio-actions .btn { box-shadow: none; }
+.studio-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-self: stretch;
+}
+.studio-aside-card,
+.studio-stage-card,
+.studio-queue-item,
+.studio-econ-card,
+.studio-ladder-card {
+  background: rgba(255,255,255,0.82);
+  border: 1px solid rgba(212,196,176,0.9);
+  border-radius: 18px;
+  box-shadow: 0 10px 32px rgba(59,47,47,0.06);
+}
+.studio-aside-card { padding: 18px; }
+.studio-aside-title {
+  margin-top: 8px;
+  font-size: 18px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.studio-aside-copy {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.studio-aside-list {
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+.studio-aside-item {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(250,246,241,0.9);
+  border: 1px solid var(--border-light);
+}
+.studio-aside-item strong {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.studio-stat-grid,
+.studio-stage-grid,
+.studio-ladder-grid,
+.studio-econ-grid {
+  display: grid;
+  gap: 14px;
+}
+.studio-stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.studio-stat-card {
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+.studio-stat-value {
+  margin-top: 10px;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.studio-stat-copy {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.studio-section {
+  padding: 24px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,246,241,0.88));
+  border: 1px solid rgba(212,196,176,0.72);
+}
+.studio-section-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.studio-section-title {
+  margin-top: 8px;
+  font-size: 24px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+.studio-section-copy {
+  margin-top: 8px;
+  max-width: 62ch;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.studio-stage-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.studio-stage-card { padding: 18px; }
+.studio-stage-top,
+.studio-queue-top,
+.studio-queue-meta,
+.studio-econ-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.studio-stage-count,
+.studio-econ-value {
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.studio-stage-title,
+.studio-queue-title,
+.studio-ladder-title {
+  margin-top: 10px;
+  font-size: 17px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.studio-stage-copy,
+.studio-queue-copy,
+.studio-ladder-copy {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.studio-stage-footer,
+.studio-ladder-footer {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.studio-queue-list {
+  display: grid;
+  gap: 12px;
+}
+.studio-queue-item { padding: 18px; }
+.studio-queue-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.86);
+}
+.studio-queue-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.studio-queue-status.active { color: var(--accent); border-color: rgba(18,100,163,0.22); background: rgba(232,245,254,0.78); }
+.studio-queue-status.ready { color: var(--green); border-color: rgba(0,122,90,0.22); background: rgba(227,249,229,0.88); }
+.studio-queue-status.published { color: var(--text-secondary); }
+.studio-inline-stats { margin-top: 14px; }
+.studio-inline-stat {
+  min-width: 110px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(250,246,241,0.9);
+  border: 1px solid var(--border-light);
+}
+.studio-inline-stat strong {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.studio-inline-stat span {
+  display: block;
+  margin-top: 5px;
+  font-size: 13px;
+  color: var(--text);
+}
+.studio-queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.studio-econ-grid,
+.studio-ladder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.studio-econ-card,
+.studio-ladder-card { padding: 18px; }
+.studio-econ-copy {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.studio-econ-detail {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.studio-footnote {
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: var(--bg-card);
+  border: 1px dashed rgba(18,100,163,0.28);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 1100px) {
+  .studio-hero-grid,
+  .studio-stat-grid,
+  .studio-stage-grid,
+  .studio-econ-grid,
+  .studio-ladder-grid { grid-template-columns: 1fr; }
+}
+
 /* ─── Typography ─── */
 .font-logo { font-family: var(--font-logo); font-style: italic; }
 .font-serif { font-family: var(--font-serif); }
@@ -592,6 +901,115 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; }
 .form-card { padding: 24px; }
 .form-group { margin-bottom: 20px; }
 .form-group:last-child { margin-bottom: 0; }
+.form-intro {
+  margin-bottom: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* Starter templates */
+.starter-grid {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.starter-card {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at top right, rgba(18,100,163,0.12), transparent 36%),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(245,249,252,0.98));
+  padding: 18px 18px 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  font-family: var(--font-sans);
+}
+.starter-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-dark);
+  box-shadow: 0 10px 24px rgba(18,100,163,0.08);
+}
+.starter-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 14px 30px rgba(18,100,163,0.14);
+}
+.starter-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.starter-card-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.starter-card-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.starter-card-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(18,100,163,0.18);
+  background: rgba(232,245,254,0.8);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+}
+.starter-card-title {
+  margin-top: 14px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+.starter-card-copy {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.starter-card-points {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.starter-card-point {
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(18,100,163,0.12);
+  background: rgba(255,255,255,0.84);
+  padding: 10px 12px;
+}
+.starter-card-label {
+  display: block;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+.starter-card-value {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+}
+@media (max-width: 640px) {
+  .starter-card-points { grid-template-columns: 1fr; }
+}
 
 /* Team grid */
 .team-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, 1fr); }
@@ -1499,6 +1917,10 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; }
         </div>
 
         <div class="wizard-panel">
+          <div style="margin-bottom:16px;">
+            <p class="form-intro" style="margin-bottom:12px;">Want the office to start with an actual business model instead of blank fields and hope? Pick a starter, then edit anything you want.</p>
+            <div class="starter-grid" id="starter-templates"></div>
+          </div>
           <div class="form-group">
             <label class="label" for="wiz-company">Company or project name <span style="color:var(--red,#ef4444)">*</span></label>
             <input class="input" id="wiz-company" placeholder="Dunder Mifflin Paper Co. (probably not)" autocomplete="organization" />
@@ -1677,6 +2099,7 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; }
       </div>
       <div class="messages" id="messages"></div>
       <div class="messages" id="dm-messages" style="display:none;"></div>
+      <div class="app-panel" id="app-studio"></div>
       <div class="app-panel" id="app-tasks"></div>
       <div class="app-panel" id="app-requests"></div>
       <div class="app-panel" id="app-policies"></div>
@@ -1693,7 +2116,7 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; }
       <div class="composer" style="position:relative;">
         <div class="autocomplete" id="autocomplete"></div>
         <div class="composer-inner">
-          <textarea class="composer-input" id="composer-input" aria-label="Message general channel" placeholder="Message #general &mdash; type / for commands, @ to mention" rows="1"></textarea>
+          <textarea class="composer-input" id="composer-input" aria-label="Message #general channel" placeholder="Message #general &mdash; type / for commands, @ to mention" rows="1"></textarea>
           <button class="composer-send" id="composer-send" aria-label="Send message" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="m22 2-10 10"/></svg>
           </button>
@@ -2113,6 +2536,18 @@ var WuphfAPI = (function() {
   function getScheduler() { return get('/scheduler'); }
   function getSkills() { return get('/skills'); }
   function getUsage() { return get('/usage'); }
+  function getMemory(channel) {
+    return get('/memory', {
+      channel: channel || currentChannel || 'general'
+    });
+  }
+  function setMemory(namespace, key, value) {
+    return post('/memory', {
+      namespace: namespace,
+      key: key,
+      value: value
+    });
+  }
 
   function sseURL(path) {
     var url = baseURL() + path;
@@ -2145,6 +2580,8 @@ var WuphfAPI = (function() {
     getScheduler: getScheduler,
     getSkills: getSkills,
     getUsage: getUsage,
+    getMemory: getMemory,
+    setMemory: setMemory,
     sseURL: sseURL
   };
 })();
@@ -2165,7 +2602,7 @@ var ONBOARDING_COPY = {
   step3_skip: "I'll figure it out \u2014 open the empty office",
   step3_cta: 'Start working',
 };
-
+var activeStarterTemplate = '';
 var brokerConnected = false;
 var currentChannel = 'general';
 // channelMetadata maps channel slug → {type: "O"|"D"|"G", name, members, agentSlug}
@@ -2184,6 +2621,7 @@ var cachedRequests = []; // latest /requests data for runtime strip
 var cachedUsage = null; // latest /usage data for token counts
 
 var SIDEBAR_APPS = [
+  { id: 'studio',       icon: '\u25B6', name: 'Studio' },
   { id: 'tasks',        icon: '\u2705', name: 'Tasks' },
   { id: 'requests',     icon: '\uD83D\uDCCB', name: 'Requests' },
   { id: 'policies',     icon: '\uD83D\uDEE1', name: 'Policies' },
@@ -2192,6 +2630,407 @@ var SIDEBAR_APPS = [
   { id: 'activity',     icon: '\uD83D\uDCE6', name: 'Activity' },
   { id: 'health-check', icon: '\uD83D\uDD0D', name: 'Health Check' },
 ];
+
+var STUDIO_STORAGE_KEY = 'wuphf_youtube_studio_v1';
+var STUDIO_PIPELINE_STAGES = [
+  {
+    id: 'research',
+    name: 'Research',
+    engine: 'Signal intake + scoring',
+    copy: 'Collect evergreen prompts, trend spikes, and competitor gaps before anything gets scripted.',
+    gate: 'Keep only source packets with score >= 75 and at least 3 references.'
+  },
+  {
+    id: 'script',
+    name: 'Script',
+    engine: 'Narrative template + facts',
+    copy: 'Assemble the hook, retention beats, CTA, and citations into one reusable faceless format.',
+    gate: 'Block low-confidence claims and force a clean cold open + end-screen CTA.'
+  },
+  {
+    id: 'voiceover',
+    name: 'Voiceover',
+    engine: 'Preset TTS voices',
+    copy: 'Generate voice variants by format so shorts, explainers, and buyer guides each sound consistent.',
+    gate: 'Loudness, pacing, and pronunciation pass before edit assets are exported.'
+  },
+  {
+    id: 'edit',
+    name: 'Edit',
+    engine: 'Template compositor',
+    copy: 'Render b-roll, captions, motion captions, lower thirds, and chapter cards from one template pack.',
+    gate: 'Retain opening 30 seconds, captions checked, dead air removed.'
+  },
+  {
+    id: 'thumbnail',
+    name: 'Thumbnail',
+    engine: 'Image gen + title overlay',
+    copy: 'Generate 3 concepts, stamp the title kit, and keep the visual language stable across uploads.',
+    gate: 'Title/thumbnail contrast checked with one curiosity angle and one concrete promise.'
+  },
+  {
+    id: 'publish',
+    name: 'Publish',
+    engine: 'Queue + attribution',
+    copy: 'Ship the final package with description links, pinned comment, and monetization tags in one pass.',
+    gate: 'Final QA plus revenue tags before the YouTube adapter pushes live.'
+  }
+];
+var STUDIO_AUTOMATION_RAILS = [
+  {
+    kicker: 'Plan',
+    title: 'Parameterize the business inputs',
+    copy: 'Keep the wedge, audience, and 30-video slate as editable GTM inputs while engineering locks the reusable production machine.',
+    proof: 'Current repo fit: this can live as broker-backed config without a new frontend stack.'
+  },
+  {
+    kicker: 'Produce',
+    title: 'Turn one topic packet into all assets',
+    copy: 'Every run should fan out from one approved topic packet into script, TTS, edit template, thumbnail pack, and publish metadata.',
+    proof: 'Natural backend seam: workflow definitions plus JSONL run history already exist in internal/action.'
+  },
+  {
+    kicker: 'Monetize',
+    title: 'Instrument revenue from the first upload',
+    copy: 'Descriptions, pinned comments, sponsor slots, and owned-audience CTAs should be generated at publish time, not bolted on later.',
+    proof: 'Use day-zero affiliate + lead capture now; ads and sponsors become switches, not redesigns.'
+  }
+];
+var STUDIO_MONETIZATION_LADDER = [
+  {
+    kicker: 'Day 0',
+    title: 'Affiliate + lead magnet',
+    copy: 'Descriptions, pinned comments, and CTA cards ship with every upload so monetization starts before YPP unlocks.',
+    footer: 'Engineering requirement: publish payload must own links, UTM tags, and CTA copy.'
+  },
+  {
+    kicker: 'After YPP',
+    title: 'Ads as baseline, not strategy',
+    copy: 'Ad revenue becomes margin padding once the channel clears the first platform gate.',
+    footer: 'Engineering requirement: analytics feedback loops track retention and RPM by template.'
+  },
+  {
+    kicker: 'After repeat winners',
+    title: 'Sponsor inventory',
+    copy: 'Bundle long-form mentions, shorts cutdowns, and newsletter placements into one sellable package.',
+    footer: 'Engineering requirement: every winning template stores sponsor-safe insertion points.'
+  },
+  {
+    kicker: 'Owned asset',
+    title: 'Email or community capture',
+    copy: 'The machine should graduate traffic into an owned list so the business stops depending on pure recommendation traffic.',
+    footer: 'Engineering requirement: publish metadata includes first-party capture destinations by default.'
+  }
+];
+var STUDIO_QUEUE_SEED = [
+  {
+    id: 'template-contrarian-long',
+    title: 'Contrarian explainer template',
+    format: 'Long-form',
+    stageIndex: 1,
+    score: 92,
+    unitCost: 18,
+    eta: 'Today 16:00',
+    monetization: 'affiliate + ads',
+    state: 'active'
+  },
+  {
+    id: 'template-case-study-long',
+    title: 'Case-study narrative template',
+    format: 'Long-form',
+    stageIndex: 3,
+    score: 88,
+    unitCost: 19,
+    eta: 'Tomorrow 09:30',
+    monetization: 'ads + sponsor insert',
+    state: 'active'
+  },
+  {
+    id: 'template-mistakes-short',
+    title: 'Five-mistakes short',
+    format: 'Short',
+    stageIndex: 2,
+    score: 84,
+    unitCost: 4,
+    eta: 'Today 13:15',
+    monetization: 'affiliate CTA',
+    state: 'active'
+  },
+  {
+    id: 'template-checklist-short',
+    title: 'Checklist cutdown',
+    format: 'Short',
+    stageIndex: 4,
+    score: 80,
+    unitCost: 4,
+    eta: 'Today 18:20',
+    monetization: 'lead magnet CTA',
+    state: 'active'
+  },
+  {
+    id: 'template-buyer-guide-long',
+    title: 'Buyer-guide companion',
+    format: 'Long-form',
+    stageIndex: 5,
+    score: 86,
+    unitCost: 17,
+    eta: 'Queued for publish',
+    monetization: 'affiliate + sponsor slot',
+    state: 'ready'
+  }
+];
+var STUDIO_MEMORY_NAMESPACE = 'youtube_factory';
+var STUDIO_MEMORY_KEY = 'studio_state';
+var STUDIO_SYSTEM_BLUEPRINT = [
+  {
+    id: 'control-plane',
+    kicker: 'Build now',
+    title: 'Control plane + workspace defaults',
+    copy: 'Persist the niche thesis, cadence, queue state, and operator lanes in broker memory so the office can resume without rebuilding context.',
+    status: 'build_now',
+    footer: 'First slice: web Studio panel + starter seeding + broker memory.'
+  },
+  {
+    id: 'research-engine',
+    kicker: 'Build now',
+    title: 'Research intake + scoring packets',
+    copy: 'Turn search demand, competitor gaps, and proof into reusable topic packets with one scoring rubric and one approval gate.',
+    status: 'build_now',
+    footer: 'Implementation seam: tasks, channels, and artifact-backed packet records.'
+  },
+  {
+    id: 'script-engine',
+    kicker: 'Build now',
+    title: 'Script templates + repurposing briefs',
+    copy: 'Generate long-form outlines, shorts cutdowns, CTA blocks, and citations from one approved topic packet.',
+    status: 'build_now',
+    footer: 'Implementation seam: specialist skills plus saved prompt templates.'
+  },
+  {
+    id: 'media-adapters',
+    kicker: 'Stub first',
+    title: 'Voice, thumbnail, and edit adapters',
+    copy: 'Treat TTS, image generation, and video compositing as replaceable adapters with explicit contracts instead of hardcoding vendors into the UI.',
+    status: 'stub',
+    footer: 'Need provider selection, job orchestration, and cost controls before going live.'
+  },
+  {
+    id: 'publish-analytics',
+    kicker: 'Stub first',
+    title: 'Publishing + analytics adapters',
+    copy: 'Keep upload scheduling, pinned comment generation, and post-publish analytics behind a YouTube adapter that can be dry-run until credentials exist.',
+    status: 'stub',
+    footer: 'Needs OAuth, approval gates, retry policy, and post-upload telemetry.'
+  },
+  {
+    id: 'revenue-ops',
+    kicker: 'Build now',
+    title: 'Revenue ops from day zero',
+    copy: 'Store offers, CTA defaults, sponsor-safe insertion points, and owned-audience links before the first upload so monetization is part of the pipeline.',
+    status: 'build_now',
+    footer: 'Implementation seam: publish metadata templates plus offer registry in memory.'
+  }
+];
+var STUDIO_INTEGRATION_STUBS = [
+  { name: 'YouTube publishing adapter', status: 'stub', detail: 'Dry-run only until OAuth, upload approvals, and channel credentials exist.' },
+  { name: 'Voice generation adapter', status: 'stub', detail: 'Vendor selection can wait; define clip inputs, pacing targets, and cost ceilings first.' },
+  { name: 'Thumbnail/image adapter', status: 'stub', detail: 'Start with packaging rules and prompt slots before locking an image model.' },
+  { name: 'Analytics ingest adapter', status: 'stub', detail: 'Design the retention/CTR/RPM schema now, wire YouTube Analytics later.' }
+];
+
+function cloneData(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function starterStudioTemplate() {
+  return findStarterTemplate('faceless-ai-workflows') || STARTER_TEMPLATES[0] || { defaults: {} };
+}
+
+function buildStarterStudioState(template, companyData) {
+  template = template || starterStudioTemplate();
+  companyData = companyData || {};
+  var defaults = template.defaults || {};
+  return {
+    version: 1,
+    thesisStatus: 'ready_for_ops',
+    workspace: {
+      name: companyData.name || defaults.company || 'Faceless Foundry',
+      thesis: companyData.description || defaults.description || 'Faceless AI workflow videos for operators and founders.',
+      goal: companyData.goals || defaults.goals || 'Build a repeatable channel operating system with monetization from day one.',
+      priority: companyData.priority || defaults.priority || 'Stand up the first 30-video slate and the production machine behind it.',
+      size: companyData.size || defaults.size || '2–5',
+      audience: 'Solo founders and small teams',
+      wedge: 'Faceless AI productivity workflows',
+      cadence: '2 long-form + 5 shorts / week',
+      monetization: 'Affiliate offers, digital products, sponsors, email capture'
+    },
+    automation: cloneData(STUDIO_SYSTEM_BLUEPRINT),
+    integrations: cloneData(STUDIO_INTEGRATION_STUBS),
+    queue: cloneData(STUDIO_QUEUE_SEED),
+    lastUpdated: new Date().toISOString()
+  };
+}
+
+function defaultStudioState(companyData) {
+  return buildStarterStudioState(starterStudioTemplate(), companyData);
+}
+
+function normalizeStudioState(state) {
+  var fallback = defaultStudioState();
+  var next = (state && typeof state === 'object') ? cloneData(state) : {};
+  next.workspace = Object.assign({}, fallback.workspace, next.workspace || {});
+  next.automation = Array.isArray(next.automation) ? next.automation : cloneData(fallback.automation);
+  next.integrations = Array.isArray(next.integrations) ? next.integrations : cloneData(fallback.integrations);
+  next.queue = Array.isArray(next.queue) ? next.queue : cloneData(fallback.queue);
+  next.thesisStatus = next.thesisStatus || fallback.thesisStatus;
+  next.lastUpdated = next.lastUpdated || fallback.lastUpdated;
+  next.version = next.version || fallback.version;
+  return next;
+}
+
+function getStudioState() {
+  try {
+    var raw = localStorage.getItem(STUDIO_STORAGE_KEY);
+    if (!raw) return defaultStudioState();
+    var parsed = JSON.parse(raw);
+    return normalizeStudioState(parsed);
+  } catch (_) {
+    return defaultStudioState();
+  }
+}
+
+function saveStudioState(state) {
+  var normalized = normalizeStudioState(state);
+  normalized.lastUpdated = new Date().toISOString();
+  localStorage.setItem(STUDIO_STORAGE_KEY, JSON.stringify(normalized));
+}
+
+function parseStudioMemoryValue(value) {
+  if (!value) return null;
+  try {
+    return normalizeStudioState(JSON.parse(value));
+  } catch (_) {
+    return null;
+  }
+}
+
+function loadStudioState() {
+  if (!brokerConnected) return Promise.resolve(getStudioState());
+  return WuphfAPI.getMemory('general')
+    .then(function(data) {
+      var ns = data && data.memory ? data.memory[STUDIO_MEMORY_NAMESPACE] : null;
+      return parseStudioMemoryValue(ns && ns[STUDIO_MEMORY_KEY]);
+    })
+    .catch(function() {
+      return null;
+    });
+}
+
+function persistStudioState(state) {
+  var normalized = normalizeStudioState(state);
+  normalized.lastUpdated = new Date().toISOString();
+  saveStudioState(normalized);
+  if (!brokerConnected) return Promise.resolve(normalized);
+  return WuphfAPI.setMemory(STUDIO_MEMORY_NAMESPACE, STUDIO_MEMORY_KEY, JSON.stringify(normalized))
+    .then(function() {
+      return normalized;
+    });
+}
+
+function studioWorkspaceChannels(channels) {
+  return (channels || []).filter(function(channel) {
+    var slug = String(channel.slug || channel.name || '').toLowerCase();
+    return slug.indexOf('yt-') === 0;
+  });
+}
+
+function isStudioWorkspace(channels) {
+  return studioWorkspaceChannels(channels).length > 0;
+}
+
+function stageNameForRun(run) {
+  var stage = STUDIO_PIPELINE_STAGES[Math.max(0, Math.min(run.stageIndex || 0, STUDIO_PIPELINE_STAGES.length - 1))];
+  if (!stage) return 'Research';
+  if (run.state === 'published') return 'Published';
+  if (run.state === 'ready' && stage.id === 'publish') return 'Ready to publish';
+  return stage.name;
+}
+
+function studioStageCount(state, idx) {
+  return (state.queue || []).filter(function(run) {
+    return run.state !== 'published' && run.stageIndex === idx;
+  }).length;
+}
+
+function computeStudioMetrics(state) {
+  var queue = state.queue || [];
+  var active = queue.filter(function(run) { return run.state !== 'published'; });
+  var ready = queue.filter(function(run) { return run.state === 'ready'; }).length;
+  var published = queue.filter(function(run) { return run.state === 'published'; }).length;
+  var avgCost = active.length ? (active.reduce(function(sum, run) { return sum + (run.unitCost || 0); }, 0) / active.length) : 0;
+  var longCount = queue.filter(function(run) { return run.format === 'Long-form'; }).length;
+  var shortCount = queue.filter(function(run) { return run.format === 'Short'; }).length;
+  return {
+    queueCount: active.length,
+    readyCount: ready,
+    publishedCount: published,
+    avgCost: '$' + avgCost.toFixed(0),
+    modeledMonthlyOpEx: '$' + String((longCount * 18) + (shortCount * 4) + 260)
+  };
+}
+
+function rerenderStudioIfOpen() {
+  if (currentApp !== 'studio') return;
+  var panel = document.getElementById('app-studio');
+  if (panel) renderStudioApp(panel);
+}
+
+function resetStudioDemo() {
+  return persistStudioState(defaultStudioState()).then(function() {
+    rerenderStudioIfOpen();
+  });
+}
+
+function seedStudioQueue() {
+  return loadStudioState().then(function(state) {
+    state = normalizeStudioState(state || defaultStudioState());
+    if ((state.queue || []).length === 0) state.queue = cloneData(STUDIO_QUEUE_SEED);
+    return persistStudioState(state);
+  }).then(function() {
+    rerenderStudioIfOpen();
+  });
+}
+
+function advanceStudioRun(runID) {
+  return loadStudioState().then(function(state) {
+    state = normalizeStudioState(state || defaultStudioState());
+    var run = (state.queue || []).find(function(item) { return item.id === runID; });
+    if (!run || run.state === 'published') return null;
+    if (run.stageIndex < STUDIO_PIPELINE_STAGES.length - 1) {
+      run.stageIndex += 1;
+      run.state = run.stageIndex === STUDIO_PIPELINE_STAGES.length - 1 ? 'ready' : 'active';
+    } else {
+      run.state = 'published';
+      run.eta = 'Published';
+    }
+    return persistStudioState(state);
+  }).then(function() {
+    rerenderStudioIfOpen();
+  });
+}
+
+function advanceStudioBottleneck() {
+  return loadStudioState().then(function(state) {
+    state = normalizeStudioState(state || defaultStudioState());
+    var queue = (state.queue || []).filter(function(run) { return run.state !== 'published'; });
+    if (queue.length === 0) return seedStudioQueue();
+    queue.sort(function(a, b) {
+      if ((a.stageIndex || 0) === (b.stageIndex || 0)) return (b.score || 0) - (a.score || 0);
+      return (a.stageIndex || 0) - (b.stageIndex || 0);
+    });
+    return advanceStudioRun(queue[0].id);
+  });
+}
 
 // ═══════════════════════════════════════════════════════════════
 //   HASH ROUTER — single source of truth for navigation state
@@ -2279,7 +3118,7 @@ function _cleanupAllViews() {
   if (typeof recoveryViewOpen !== 'undefined' && recoveryViewOpen) closeRecoveryView();
 
   // Hide ALL app panels
-  var allAppIds = ['app-tasks', 'app-requests', 'app-policies', 'app-calendar', 'app-skills', 'app-activity', 'app-artifacts'];
+  var allAppIds = ['app-studio', 'app-tasks', 'app-requests', 'app-policies', 'app-calendar', 'app-skills', 'app-activity', 'app-artifacts'];
   allAppIds.forEach(function(pid) {
     var p = document.getElementById(pid);
     if (p) { p.classList.remove('active'); p.style.display = 'none'; }
@@ -2329,6 +3168,7 @@ function _enterChannel(name) {
   document.getElementById('channel-title').textContent = '# ' + name;
   document.getElementById('channel-desc').textContent = ch ? ch.desc : '';
   document.getElementById('composer-input').placeholder = 'Message #' + name + ' \u2014 type / for commands, @ to mention';
+  document.getElementById('composer-input').setAttribute('aria-label', 'Message #' + name + ' channel');
 
   markChannelSeen(name);
   _refreshSidebars();
@@ -2435,7 +3275,24 @@ function _refreshSidebars() {
   renderSidebarApps();
 }
 
-var AGENTS = [
+function cloneAgents(agents) {
+  return (agents || []).map(function(agent) {
+    var copy = {};
+    Object.keys(agent).forEach(function(key) {
+      var value = agent[key];
+      copy[key] = Array.isArray(value) ? value.slice() : value;
+    });
+    return copy;
+  });
+}
+
+function cloneChannels(channels) {
+  return (channels || []).map(function(channel) {
+    return { name: channel.name, desc: channel.desc };
+  });
+}
+
+var DEFAULT_AGENTS = [
   { slug: 'ceo',      emoji: '\uD83D\uDC54', name: 'CEO',               role: 'Strategy, delegation, goal tracking',           checked: true,  type: 'lead' },
   { slug: 'pm',       emoji: '\uD83D\uDCCB', name: 'Product Manager',   role: 'Roadmap, prioritization, user stories',         checked: true,  type: 'lead' },
   { slug: 'frontend', emoji: '\uD83C\uDFA8', name: 'Frontend Engineer', role: 'UI/UX implementation, components, styling',     checked: true,  type: 'specialist' },
@@ -2444,6 +3301,16 @@ var AGENTS = [
   { slug: 'designer', emoji: '\u270F\uFE0F', name: 'Designer',          role: 'Visual design, branding, prototypes',           checked: false, type: 'specialist' },
   { slug: 'cmo',      emoji: '\uD83D\uDCE3', name: 'CMO',               role: 'Growth, content, positioning, campaigns',       checked: false, type: 'lead' },
   { slug: 'cro',      emoji: '\uD83D\uDCB0', name: 'CRO',               role: 'Revenue, sales strategy, pipeline',             checked: false, type: 'specialist' },
+];
+
+var FACELESS_AI_STARTER_AGENTS = [
+  { slug: 'ceo',                emoji: '\uD83D\uDC54', name: 'CEO',                 role: 'Owns strategy, routes work, and keeps the channel commercial', checked: true, type: 'lead', builtIn: true },
+  { slug: 'research-lead',      emoji: '\uD83D\uDD0E', name: 'Research Lead',       role: 'Search demand, trend mining, and proof gathering',             checked: true, type: 'specialist', expertise: ['YouTube search intent', 'Trend analysis', 'Competitive teardown', 'Topic scoring'], personality: 'Fast, skeptical, and allergic to unproven video ideas.' },
+  { slug: 'scriptwriter',       emoji: '\u270D\uFE0F', name: 'Scriptwriter',        role: 'Hooks, outlines, scripts, and repurposing briefs',             checked: true, type: 'specialist', expertise: ['Hooks', 'Narrative structure', 'Retention pacing', 'Shorts repurposing'], personality: 'Writes for clarity, pace, and watch time. Cuts filler without mercy.' },
+  { slug: 'editor',             emoji: '\uD83C\uDFAC', name: 'Editor',              role: 'Production workflow, b-roll, voiceover, and final cut SOPs',   checked: true, type: 'specialist', expertise: ['Editing workflow', 'Voiceover timing', 'Screen recordings', 'Quality control'], personality: 'Operational, deadline-driven, and unimpressed by chaotic source files.' },
+  { slug: 'thumbnail-designer', emoji: '\uD83C\uDFAF', name: 'Thumbnail Designer',  role: 'Packaging, thumbnail system, and title-visual alignment',      checked: true, type: 'specialist', expertise: ['Thumbnail systems', 'Packaging', 'Visual contrast', 'Click-through rate'], personality: 'Designs for clicks without turning the channel into tabloid sludge.' },
+  { slug: 'growth-ops',         emoji: '\uD83D\uDCC8', name: 'Growth Ops',          role: 'Publishing cadence, optimization, and backlog planning',        checked: true, type: 'specialist', expertise: ['Distribution', 'Metadata testing', 'Cadence planning', 'Audience loops'], personality: 'Treats distribution like a system, not a wish.' },
+  { slug: 'monetization',       emoji: '\uD83D\uDCB8', name: 'Monetization Lead',   role: 'Affiliate stack, digital products, sponsors, and offers',      checked: true, type: 'specialist', expertise: ['Affiliate offers', 'Digital products', 'Sponsor packaging', 'Revenue ops'], personality: 'Commercially sharp. Optimizes for cash flow before vanity metrics.' }
 ];
 
 var PREREQS = [
@@ -2489,11 +3356,56 @@ var AGENT_RESPONSES = [
   'On it. I\'ll have something for you to review within the hour. That\'s what she said... about the deadline.',
 ];
 
-var CHANNELS = [
+var DEFAULT_CHANNELS = [
   { name: 'general', desc: 'The shared office — Pretzel Day is every day here' },
   { name: 'engineering', desc: 'Technical discussions and code reviews — Dwight enforces standards' },
   { name: 'marketing', desc: 'Campaigns, content, and positioning — Ryan\'s domain, before WUPHF happened' },
 ];
+
+var STARTER_TEMPLATES = [
+  {
+    id: 'faceless-ai-workflows',
+    kicker: 'Featured starter',
+    name: 'Faceless AI Workflows',
+    badge: 'Business template',
+    blurb: 'A faceless YouTube business for AI productivity workflows aimed at solo founders and small teams: screen-recorded content, repeatable packaging, and monetization from affiliates, digital products, and sponsors.',
+    points: [
+      { label: 'Niche', value: 'AI workflow videos for operators and founders' },
+      { label: 'Engine', value: 'Search-led scripts, screen recordings, reusable packaging' },
+      { label: 'Revenue', value: 'Affiliates first, then digital products and sponsors' }
+    ],
+    defaults: {
+      company: 'Faceless Foundry',
+      description: 'We run a faceless YouTube channel business that publishes screen-recorded AI productivity workflows for solo founders and small teams, then monetizes via affiliates, digital products, and sponsors.',
+      goals: 'Publish consistently, reach 1,000 subscribers, and create the first affiliate and digital-product revenue streams.',
+      priority: 'Build the first 30-video backlog and standardize the script-to-upload workflow.',
+      size: '2\u20135'
+    },
+    agents: FACELESS_AI_STARTER_AGENTS,
+    channels: [
+      { slug: 'yt-command',    name: 'yt-command',    description: 'CEO control room for the faceless AI workflows business.',             members: ['research-lead', 'growth-ops', 'monetization'] },
+      { slug: 'yt-research',   name: 'yt-research',   description: 'Search demand, topics, competitor breakdowns, and proof points.',      members: ['research-lead', 'scriptwriter'] },
+      { slug: 'yt-scripts',    name: 'yt-scripts',    description: 'Hooks, outlines, scripts, and repurposing plans for long-form and Shorts.', members: ['scriptwriter'] },
+      { slug: 'yt-production', name: 'yt-production', description: 'Editing, screen capture workflow, narration, and upload SOPs.',         members: ['editor'] },
+      { slug: 'yt-packaging',  name: 'yt-packaging',  description: 'Titles, thumbnails, visual rules, and CTR experiments.',               members: ['thumbnail-designer', 'growth-ops'] },
+      { slug: 'yt-growth',     name: 'yt-growth',     description: 'Cadence, metadata, distribution loops, and performance tuning.',        members: ['growth-ops'] },
+      { slug: 'yt-revenue',    name: 'yt-revenue',    description: 'Affiliate offers, templates, sponsors, and monetization experiments.',  members: ['monetization'] }
+    ],
+    tasks: [
+      { channel: 'yt-research',   owner: 'research-lead',      title: 'Build the first 30-video backlog',                         details: 'Score topics by demand, proof, and monetization fit for the faceless AI workflows channel.' },
+      { channel: 'yt-scripts',    owner: 'scriptwriter',       title: 'Draft the first 10 scripts with repeatable hooks',        details: 'Turn the highest-scoring backlog items into long-form outlines plus short-form repurposing notes.' },
+      { channel: 'yt-production', owner: 'editor',             title: 'Standardize the script-to-upload production workflow',     details: 'Define the screen recording, voiceover, editing, QA, and scheduling SOP for a faceless pipeline.' },
+      { channel: 'yt-packaging',  owner: 'thumbnail-designer', title: 'Create a reusable thumbnail and title system',             details: 'Ship packaging rules that keep the channel visually coherent while supporting A/B testing.' },
+      { channel: 'yt-growth',     owner: 'growth-ops',         title: 'Set the publishing cadence and optimization loop',         details: 'Define the weekly release rhythm, review cadence, and the KPIs that should drive backlog updates.' },
+      { channel: 'yt-revenue',    owner: 'monetization',       title: 'Launch the affiliate and digital-product monetization stack', details: 'Map each content pillar to monetization paths before ad revenue matters.' }
+    ],
+    kickoffTagged: ['ceo'],
+    kickoffMessage: 'Build this faceless YouTube business end to end for AI productivity workflows. Use the specialist lanes already created and come back with a 30-day launch plan, the first 30 video ideas, 10 script briefs, the production SOP, packaging rules, and the monetization ladder across affiliates, digital products, and sponsors.'
+  }
+];
+
+var AGENTS = cloneAgents(DEFAULT_AGENTS);
+var CHANNELS = cloneChannels(DEFAULT_CHANNELS);
 
 // ─── Progress ───
 function renderProgress() {
@@ -2525,17 +3437,241 @@ function goToStep(n) {
   renderProgress();
 }
 
+function findStarterTemplate(id) {
+  return STARTER_TEMPLATES.find(function(template) { return template.id === id; }) || null;
+}
+
+function setFieldValue(id, value) {
+  var input = document.getElementById(id);
+  if (input) input.value = value || '';
+}
+
+function setFirstExistingFieldValue(ids, value) {
+  (ids || []).some(function(id) {
+    var input = document.getElementById(id);
+    if (!input) return false;
+    input.value = value || '';
+    return true;
+  });
+}
+
+function getFirstExistingFieldValue(ids) {
+  for (var i = 0; i < (ids || []).length; i++) {
+    var input = document.getElementById(ids[i]);
+    if (input) return (input.value || '').trim();
+  }
+  return '';
+}
+
+function selectSize(size) {
+  selectedSize = size || '';
+  var container = document.getElementById('size-options');
+  if (!container) return;
+  container.querySelectorAll('.size-btn').forEach(function(btn) {
+    btn.classList.toggle('selected', !!size && btn.textContent === size);
+  });
+}
+
+function renderStarterTemplates() {
+  var container = document.getElementById('starter-templates');
+  if (!container) return;
+  container.textContent = '';
+  STARTER_TEMPLATES.forEach(function(template) {
+    var card = document.createElement('button');
+    card.className = 'starter-card' + (activeStarterTemplate === template.id ? ' active' : '');
+    card.type = 'button';
+    card.addEventListener('click', function() {
+      applyStarterTemplate(template.id);
+    });
+
+    var top = document.createElement('div');
+    top.className = 'starter-card-top';
+
+    var kicker = document.createElement('div');
+    kicker.className = 'starter-card-kicker';
+    kicker.innerHTML = '<span class="starter-card-dot" aria-hidden="true"></span><span>' + template.kicker + '</span>';
+
+    var badge = document.createElement('div');
+    badge.className = 'starter-card-badge';
+    badge.textContent = template.badge;
+
+    top.appendChild(kicker);
+    top.appendChild(badge);
+
+    var title = document.createElement('div');
+    title.className = 'starter-card-title';
+    title.textContent = template.name;
+
+    var copy = document.createElement('p');
+    copy.className = 'starter-card-copy';
+    copy.textContent = template.blurb;
+
+    var points = document.createElement('div');
+    points.className = 'starter-card-points';
+    (template.points || []).forEach(function(point) {
+      var pointCard = document.createElement('div');
+      pointCard.className = 'starter-card-point';
+      pointCard.innerHTML = '<span class="starter-card-label">' + point.label + '</span><div class="starter-card-value">' + point.value + '</div>';
+      points.appendChild(pointCard);
+    });
+
+    card.appendChild(top);
+    card.appendChild(title);
+    card.appendChild(copy);
+    card.appendChild(points);
+    container.appendChild(card);
+  });
+}
+
+function applyStarterTemplate(id) {
+  var template = findStarterTemplate(id);
+  if (!template) return;
+  activeStarterTemplate = template.id;
+  setFirstExistingFieldValue(['q-company', 'wiz-company'], template.defaults.company);
+  setFirstExistingFieldValue(['q-description', 'wiz-description'], template.defaults.description);
+  setFirstExistingFieldValue(['q-goals'], template.defaults.goals);
+  setFirstExistingFieldValue(['q-priority', 'wiz-priority'], template.defaults.priority);
+  AGENTS = cloneAgents(template.agents);
+  selectSize(template.defaults.size);
+  renderStarterTemplates();
+  if (currentStep >= 3) renderTeamGrid();
+}
+
+function runSerial(steps) {
+  return steps.reduce(function(promise, step) {
+    return promise.then(step);
+  }, Promise.resolve());
+}
+
+function safePost(path, body) {
+  return WuphfAPI.post(path, body).catch(function(err) {
+    console.warn('[wuphf] non-fatal setup error for ' + path + ':', err && err.message ? err.message : err);
+    return null;
+  });
+}
+
+function selectedAgentSlugs() {
+  return AGENTS.filter(function(agent) { return agent.checked; }).map(function(agent) { return agent.slug; });
+}
+
+function buildStarterChannels(template, selectedSlugs) {
+  return (template.channels || []).map(function(channel) {
+    var members = (channel.members || []).filter(function(member) {
+      return selectedSlugs.indexOf(member) !== -1;
+    });
+    if (members.length === 0) return null;
+    return {
+      slug: channel.slug,
+      name: channel.name || channel.slug,
+      description: channel.description,
+      members: members
+    };
+  }).filter(Boolean);
+}
+
+function applyStarterPreview(template) {
+  if (!template) {
+    CHANNELS = cloneChannels(DEFAULT_CHANNELS);
+    return;
+  }
+  var starterChannels = buildStarterChannels(template, selectedAgentSlugs()).map(function(channel) {
+    return { name: channel.name, desc: channel.description };
+  });
+  CHANNELS = [{ name: 'general', desc: 'Command deck for the faceless AI workflows launch.' }].concat(starterChannels);
+}
+
+function setupStarterOffice(template) {
+  if (!template) return Promise.resolve();
+
+  var selectedSlugs = selectedAgentSlugs();
+  var customAgents = (template.agents || []).filter(function(agent) {
+    return agent.slug !== 'ceo' && !agent.builtIn && selectedSlugs.indexOf(agent.slug) !== -1;
+  });
+  var channels = buildStarterChannels(template, selectedSlugs);
+  var activeChannels = {};
+  channels.forEach(function(channel) { activeChannels[channel.slug] = true; });
+  var tasks = (template.tasks || []).filter(function(task) {
+    return activeChannels[task.channel] && selectedSlugs.indexOf(task.owner) !== -1;
+  });
+
+  return runSerial(customAgents.map(function(agent) {
+    return function() {
+      return safePost('/office-members', {
+        action: 'create',
+        slug: agent.slug,
+        name: agent.name,
+        role: agent.role,
+        expertise: agent.expertise || [],
+        personality: agent.personality || '',
+        created_by: 'you'
+      });
+    };
+  })).then(function() {
+    return runSerial(channels.map(function(channel) {
+      return function() {
+        return safePost('/channels', {
+          action: 'create',
+          slug: channel.slug,
+          name: channel.name,
+          description: channel.description,
+          members: channel.members,
+          created_by: 'you'
+        });
+      };
+    }));
+  }).then(function() {
+    return runSerial(channels.map(function(channel) {
+      return function() {
+        return runSerial((channel.members || []).map(function(member) {
+          return function() {
+            return safePost('/channel-members', {
+              channel: channel.slug,
+              action: 'add',
+              slug: member
+            });
+          };
+        }));
+      };
+    }));
+  }).then(function() {
+    return runSerial(tasks.map(function(task) {
+      return function() {
+        return safePost('/tasks', {
+          action: 'create',
+          channel: task.channel,
+          title: task.title,
+          details: task.details,
+          owner: task.owner,
+          created_by: 'you'
+        });
+      };
+    }));
+  }).then(function() {
+    return safePost('/messages', {
+      from: 'you',
+      channel: 'general',
+      tagged: template.kickoffTagged || ['ceo'],
+      content: template.kickoffMessage
+    });
+  });
+}
+
+function setupStarterStudio(template, companyData) {
+  if (!template) return Promise.resolve();
+  return persistStudioState(buildStarterStudioState(template, companyData));
+}
+
 // ─── Size options ───
 function renderSizeOptions() {
   var container = document.getElementById('size-options');
+  container.textContent = '';
   ['Just me', '2\u20135', '5\u201320', '20+'].forEach(function(size) {
     var btn = document.createElement('button');
     btn.className = 'size-btn';
+    if (selectedSize === size) btn.classList.add('selected');
     btn.textContent = size;
     btn.addEventListener('click', function() {
-      selectedSize = size;
-      container.querySelectorAll('.size-btn').forEach(function(b) { b.classList.remove('selected'); });
-      btn.classList.add('selected');
+      selectSize(size);
     });
     container.appendChild(btn);
   });
@@ -2631,10 +3767,19 @@ function renderAPIKeys() {
 
 // ─── Build team ───
 function buildTeam() {
+  var starter = findStarterTemplate(activeStarterTemplate);
+  if (starter) {
+    AGENTS = cloneAgents(starter.agents);
+    applyStarterPreview(starter);
+    renderTeamGrid();
+    goToStep(3);
+    return;
+  }
+
   var desc = (
-    (document.getElementById('q-description') ? document.getElementById('q-description').value : '') + ' ' +
-    (document.getElementById('q-goals') ? document.getElementById('q-goals').value : '') + ' ' +
-    (document.getElementById('q-priority') ? document.getElementById('q-priority').value : '')
+    getFirstExistingFieldValue(['q-description', 'wiz-description']) + ' ' +
+    getFirstExistingFieldValue(['q-goals']) + ' ' +
+    getFirstExistingFieldValue(['q-priority', 'wiz-priority'])
   ).toLowerCase();
 
   AGENTS.forEach(function(a) {
@@ -2698,17 +3843,15 @@ function renderTeamGrid() {
 
 // ─── Launch ───
 function launchOffice() {
-  // Persist onboarding answers to broker config — fire and forget
+  var starter = findStarterTemplate(activeStarterTemplate);
   var companyData = {
-    name: (document.getElementById('q-company') ? document.getElementById('q-company').value.trim() : ''),
-    description: (document.getElementById('q-description') ? document.getElementById('q-description').value.trim() : ''),
-    goals: (document.getElementById('q-goals') ? document.getElementById('q-goals').value.trim() : ''),
+    name: getFirstExistingFieldValue(['q-company', 'wiz-company']),
+    description: getFirstExistingFieldValue(['q-description', 'wiz-description']),
+    goals: getFirstExistingFieldValue(['q-goals']),
     size: selectedSize || '',
-    priority: (document.getElementById('q-priority') ? document.getElementById('q-priority').value.trim() : '')
+    priority: getFirstExistingFieldValue(['q-priority', 'wiz-priority'])
   };
-  if (companyData.name || companyData.description || companyData.goals) {
-    WuphfAPI.post('/company', companyData).catch(function() {});
-  }
+  applyStarterPreview(starter);
 
   var _legacyOnboarding = document.getElementById('onboarding');
   if (_legacyOnboarding) _legacyOnboarding.style.display = 'none';
@@ -2718,6 +3861,23 @@ function launchOffice() {
       if (data.status === 'ok') brokerConnected = true;
     })
     .catch(function() {})
+    .then(function() {
+      var setupWork = [];
+      if (starter) {
+        setupWork.push(function() { return setupStarterStudio(starter, companyData); });
+      }
+      if (!brokerConnected) return runSerial(setupWork);
+      if (companyData.name || companyData.description || companyData.goals || companyData.size || companyData.priority) {
+        setupWork.push(function() { return safePost('/company', companyData); });
+      }
+      if (starter) {
+        setupWork.push(function() { return setupStarterOffice(starter); });
+      }
+      return runSerial(setupWork);
+    })
+    .catch(function(err) {
+      console.warn('[wuphf] launch setup failed:', err && err.message ? err.message : err);
+    })
     .then(function() {
       // Fetch real pack members so the splash can render the correct cast
       // (see ISSUE-003). If the fetch fails, fall back to the legacy intro.
@@ -3437,6 +4597,319 @@ function switchApp(appId) {
   }
   navigate('#/apps/' + encodeURIComponent(appId));
 }
+
+function studioBadgeClass(status) {
+  return status === 'build_now' ? 'badge badge-green' : 'badge badge-yellow';
+}
+
+function studioBadgeLabel(status) {
+  return status === 'build_now' ? 'Build now' : 'Stub first';
+}
+
+function renderStudioEmptyState(panel, channels) {
+  panel.style.overflow = 'auto';
+  var shell = el('div', { className: 'studio-shell' });
+  var hero = el('section', { className: 'studio-hero' });
+  var grid = el('div', { className: 'studio-hero-grid' });
+  var left = el('div', null, [
+    el('div', { className: 'studio-kicker' }, 'Studio'),
+    el('h2', { className: 'studio-title' }, 'The control room is not initialized yet.'),
+    el('p', { className: 'studio-copy' }, 'The current app already has the YouTube starter team, lanes, and kickoff message, but the Studio state needs to be seeded so the web UI can act like a real control plane instead of a blank panel.')
+  ]);
+  var actions = el('div', { className: 'studio-actions' });
+  var seedBtn = el('button', { className: 'btn btn-primary', onClick: function() {
+    setupStarterStudio(starterStudioTemplate(), {}).then(function() {
+      rerenderStudioIfOpen();
+      showNotice('Studio seeded from the faceless YouTube starter.', 'success');
+    }).catch(function(err) {
+      showNotice('Studio seed failed: ' + (err && err.message ? err.message : err), 'error');
+    });
+  } }, 'Seed Studio');
+  actions.appendChild(seedBtn);
+  left.appendChild(actions);
+
+  var ytChannels = studioWorkspaceChannels(channels);
+  var right = el('div', { className: 'studio-aside' }, [
+    el('div', { className: 'studio-aside-card' }, [
+      el('div', { className: 'studio-card-kicker' }, ytChannels.length > 0 ? 'Workspace detected' : 'Suggested next step'),
+      el('div', { className: 'studio-aside-title' }, ytChannels.length > 0 ? 'Existing YouTube lanes found' : 'Use the faceless YouTube starter'),
+      el('div', { className: 'studio-aside-copy' }, ytChannels.length > 0
+        ? 'This workspace already has YouTube execution lanes. Seeding Studio will make those lanes visible in one product view and persist the factory state in broker memory.'
+        : 'If the goal is the automated YouTube business, the starter gives you the right specialists, channels, tasks, and kickoff packet in one move.')
+    ])
+  ]);
+
+  grid.appendChild(left);
+  grid.appendChild(right);
+  hero.appendChild(grid);
+  shell.appendChild(hero);
+  panel.appendChild(shell);
+}
+
+function renderStudioApp(panel) {
+  panel.style.overflow = 'auto';
+  panel.textContent = '';
+  panel.appendChild(el('div', {
+    style: {
+      padding: '40px 20px',
+      textAlign: 'center',
+      color: 'var(--text-tertiary)',
+      fontSize: '14px'
+    }
+  }, 'Loading Studio...'));
+
+  var channelPromise = brokerConnected
+    ? WuphfAPI.getChannels().catch(function() { return { channels: [] }; })
+    : Promise.resolve({
+        channels: (CHANNELS || []).map(function(channel) {
+          return { name: channel.name, description: channel.desc || '' };
+        })
+      });
+  var taskPromise = brokerConnected
+    ? WuphfAPI.get('/tasks', { all_channels: true, viewer_slug: 'human' }).catch(function() { return { tasks: [] }; })
+    : Promise.resolve({ tasks: cachedTasks || [] });
+
+  Promise.all([loadStudioState(), channelPromise, taskPromise]).then(function(results) {
+    var state = results[0];
+    var channels = results[1].channels || [];
+    var tasks = results[2].tasks || [];
+
+    if (!state && isStudioWorkspace(channels)) {
+      state = defaultStudioState();
+      persistStudioState(state).catch(function() {});
+    }
+
+    panel.textContent = '';
+    if (!state) {
+      renderStudioEmptyState(panel, channels);
+      return;
+    }
+
+    state = normalizeStudioState(state);
+    var studioChannels = studioWorkspaceChannels(channels);
+    var studioTasks = (tasks || []).filter(function(task) {
+      var slug = String(task.channel || '').toLowerCase();
+      return slug.indexOf('yt-') === 0 && task.status !== 'done' && task.status !== 'completed';
+    });
+    var metrics = computeStudioMetrics(state);
+
+    var shell = el('div', { className: 'studio-shell' });
+    var hero = el('section', { className: 'studio-hero' });
+    var heroGrid = el('div', { className: 'studio-hero-grid' });
+    var left = el('div', null, [
+      el('div', { className: 'studio-kicker' }, 'YouTube factory control plane'),
+      el('h2', { className: 'studio-title' }, state.workspace.name || 'Faceless Foundry'),
+      el('p', { className: 'studio-copy' }, state.workspace.thesis || 'A repeatable faceless YouTube operating system.')
+    ]);
+    var chipRow = el('div', { className: 'studio-chip-row' }, [
+      el('div', { className: 'studio-chip' }, state.workspace.wedge || 'Faceless AI workflows'),
+      el('div', { className: 'studio-chip' }, state.workspace.audience || 'Solo founders and small teams'),
+      el('div', { className: 'studio-chip' }, state.workspace.cadence || '2 long-form + 5 shorts / week'),
+      el('div', { className: 'studio-chip' }, state.workspace.monetization || 'Affiliate + products + sponsors')
+    ]);
+    left.appendChild(chipRow);
+    left.appendChild(el('div', { className: 'studio-copy' }, state.workspace.goal || 'Publish consistently and turn the channel into a revenue engine.'));
+
+    var actions = el('div', { className: 'studio-actions' }, [
+      el('button', { className: 'btn btn-primary', onClick: function() {
+        advanceStudioBottleneck().then(function() {
+          showNotice('Advanced the current bottleneck stage.', 'success');
+        }).catch(function(err) {
+          showNotice('Could not advance bottleneck: ' + (err && err.message ? err.message : err), 'error');
+        });
+      } }, 'Advance Bottleneck'),
+      el('button', { className: 'btn btn-ghost', onClick: function() {
+        resetStudioDemo().then(function() {
+          showNotice('Studio queue reset to the starter default.', 'success');
+        }).catch(function(err) {
+          showNotice('Could not reset Studio: ' + (err && err.message ? err.message : err), 'error');
+        });
+      } }, 'Reset Queue')
+    ]);
+    if (studioChannels.some(function(channel) { return (channel.slug || channel.name) === 'yt-command'; })) {
+      actions.appendChild(el('button', { className: 'btn btn-secondary', onClick: function() {
+        navigate('#/channels/yt-command');
+      } }, 'Open Command Lane'));
+    }
+    left.appendChild(actions);
+
+    var right = el('div', { className: 'studio-aside' });
+    var laneCard = el('div', { className: 'studio-aside-card' }, [
+      el('div', { className: 'studio-card-kicker' }, 'Live workspace lanes'),
+      el('div', { className: 'studio-aside-title' }, studioChannels.length > 0 ? String(studioChannels.length) + ' YouTube channels active' : 'Starter lanes pending'),
+      el('div', { className: 'studio-aside-copy' }, 'These are the operating lanes the office can route work through right now. The Studio panel now reflects them instead of pretending they do not exist.')
+    ]);
+    var laneList = el('div', { className: 'studio-aside-list' });
+    (studioChannels.length > 0 ? studioChannels : [{ name: 'yt-command', description: 'Seed the faceless YouTube starter to create specialist lanes.' }]).slice(0, 4).forEach(function(channel) {
+      laneList.appendChild(el('div', { className: 'studio-aside-item' }, [
+        el('strong', null, '#' + (channel.name || channel.slug)),
+        el('div', null, channel.description || 'Lane description pending.')
+      ]));
+    });
+    laneCard.appendChild(laneList);
+
+    var taskCard = el('div', { className: 'studio-aside-card' }, [
+      el('div', { className: 'studio-card-kicker' }, 'Current execution'),
+      el('div', { className: 'studio-aside-title' }, studioTasks.length > 0 ? String(studioTasks.length) + ' open YouTube tasks' : 'No open YouTube tasks yet'),
+      el('div', { className: 'studio-aside-copy' }, 'Open tasks across the YouTube lanes should mirror the current bottlenecks in research, scripting, production, packaging, growth, and revenue.')
+    ]);
+    var taskList = el('div', { className: 'studio-aside-list' });
+    (studioTasks.length > 0 ? studioTasks : [{ title: 'Create the first YouTube lane tasks', details: 'The starter seeds the office with the first operating tasks.' }]).slice(0, 3).forEach(function(task) {
+      taskList.appendChild(el('div', { className: 'studio-aside-item' }, [
+        el('strong', null, task.title || 'Starter task'),
+        el('div', null, task.details || task.description || 'Task detail pending.')
+      ]));
+    });
+    taskCard.appendChild(taskList);
+
+    right.appendChild(laneCard);
+    right.appendChild(taskCard);
+    heroGrid.appendChild(left);
+    heroGrid.appendChild(right);
+    hero.appendChild(heroGrid);
+    shell.appendChild(hero);
+
+    var statGrid = el('section', { className: 'studio-stat-grid' }, [
+      el('div', { className: 'studio-stat-card' }, [
+        el('div', { className: 'studio-card-kicker' }, 'Active runs'),
+        el('div', { className: 'studio-stat-value' }, String(metrics.queueCount)),
+        el('div', { className: 'studio-stat-copy' }, 'Items currently moving through research, scripting, production, packaging, or publish prep.')
+      ]),
+      el('div', { className: 'studio-stat-card' }, [
+        el('div', { className: 'studio-card-kicker' }, 'Ready to ship'),
+        el('div', { className: 'studio-stat-value' }, String(metrics.readyCount)),
+        el('div', { className: 'studio-stat-copy' }, 'Runs that have cleared production and only need final metadata, links, and approvals.')
+      ]),
+      el('div', { className: 'studio-stat-card' }, [
+        el('div', { className: 'studio-card-kicker' }, 'Open lane tasks'),
+        el('div', { className: 'studio-stat-value' }, String(studioTasks.length)),
+        el('div', { className: 'studio-stat-copy' }, 'Cross-channel work already created for research, scripts, production, packaging, growth, and revenue.')
+      ]),
+      el('div', { className: 'studio-stat-card' }, [
+        el('div', { className: 'studio-card-kicker' }, 'Modeled monthly op-ex'),
+        el('div', { className: 'studio-stat-value' }, metrics.modeledMonthlyOpEx),
+        el('div', { className: 'studio-stat-copy' }, 'Planning number only. Real vendor spend remains stubbed until adapters and approvals exist.')
+      ])
+    ]);
+    shell.appendChild(statGrid);
+
+    var architecture = el('section', { className: 'studio-section' });
+    architecture.appendChild(el('div', { className: 'studio-section-header' }, [
+      el('div', null, [
+        el('div', { className: 'studio-kicker' }, 'Architecture'),
+        el('h3', { className: 'studio-section-title' }, 'What gets built now vs what stays behind adapters'),
+        el('p', { className: 'studio-section-copy' }, 'The factory should be opinionated about control-plane state, research packets, scripts, and monetization metadata right away. Vendor-specific generation and publishing stay behind stubs until credentials, approvals, and cost controls exist.')
+      ])
+    ]));
+    var architectureGrid = el('div', { className: 'studio-stage-grid' });
+    state.automation.forEach(function(module) {
+      architectureGrid.appendChild(el('div', { className: 'studio-stage-card' }, [
+        el('div', { className: 'studio-stage-top' }, [
+          el('div', { className: 'studio-stage-kicker' }, module.kicker || 'Module'),
+          el('span', { className: studioBadgeClass(module.status) }, studioBadgeLabel(module.status))
+        ]),
+        el('div', { className: 'studio-stage-title' }, module.title),
+        el('div', { className: 'studio-stage-copy' }, module.copy),
+        el('div', { className: 'studio-stage-footer' }, module.footer || '')
+      ]));
+    });
+    architecture.appendChild(architectureGrid);
+    shell.appendChild(architecture);
+
+    var queueSection = el('section', { className: 'studio-section' });
+    queueSection.appendChild(el('div', { className: 'studio-section-header' }, [
+      el('div', null, [
+        el('div', { className: 'studio-kicker' }, 'Pipeline queue'),
+        el('h3', { className: 'studio-section-title' }, 'Runs in flight'),
+        el('p', { className: 'studio-section-copy' }, 'Each approved idea packet should fan out into script, voice, edit, thumbnail, and publish metadata. The queue below is now persisted in the broker-backed workspace instead of localStorage-only demo state.')
+      ])
+    ]));
+    var queueList = el('div', { className: 'studio-queue-list' });
+    (state.queue || []).forEach(function(run) {
+      var stage = STUDIO_PIPELINE_STAGES[Math.max(0, Math.min(run.stageIndex || 0, STUDIO_PIPELINE_STAGES.length - 1))] || STUDIO_PIPELINE_STAGES[0];
+      var queueCard = el('div', { className: 'studio-queue-item' }, [
+        el('div', { className: 'studio-queue-top' }, [
+          el('span', { className: 'studio-queue-status ' + (run.state || 'active') }, stageNameForRun(run)),
+          el('span', { className: 'badge badge-accent' }, 'Score ' + String(run.score || 0))
+        ]),
+        el('div', { className: 'studio-queue-title' }, run.title),
+        el('div', { className: 'studio-queue-copy' }, stage.copy),
+        el('div', { className: 'studio-inline-stats' }, [
+          el('div', { className: 'studio-inline-stat' }, [el('strong', null, 'Format'), el('span', null, run.format || 'Mixed')]),
+          el('div', { className: 'studio-inline-stat' }, [el('strong', null, 'Monetization'), el('span', null, run.monetization || 'TBD')]),
+          el('div', { className: 'studio-inline-stat' }, [el('strong', null, 'Unit cost'), el('span', null, '$' + String(run.unitCost || 0))]),
+          el('div', { className: 'studio-inline-stat' }, [el('strong', null, 'ETA'), el('span', null, run.eta || 'Backlog')])
+        ])
+      ]);
+      if (run.state !== 'published') {
+        queueCard.appendChild(el('div', { className: 'studio-queue-actions' }, [
+          el('button', { className: 'btn btn-sm btn-primary', onClick: function() {
+            advanceStudioRun(run.id).then(function() {
+              showNotice('Advanced "' + run.title + '".', 'success');
+            }).catch(function(err) {
+              showNotice('Could not advance run: ' + (err && err.message ? err.message : err), 'error');
+            });
+          } }, run.state === 'ready' ? 'Publish Mark' : 'Advance Stage')
+        ]));
+      }
+      queueList.appendChild(queueCard);
+    });
+    queueSection.appendChild(queueList);
+    shell.appendChild(queueSection);
+
+    var monetization = el('section', { className: 'studio-section' });
+    monetization.appendChild(el('div', { className: 'studio-section-header' }, [
+      el('div', null, [
+        el('div', { className: 'studio-kicker' }, 'Monetization ladder'),
+        el('h3', { className: 'studio-section-title' }, 'Revenue should be wired before scale arrives'),
+        el('p', { className: 'studio-section-copy' }, 'Affiliates and owned-audience capture are day-zero defaults. Ads and sponsors become multiplicative once the content machine starts producing repeat winners.')
+      ])
+    ]));
+    var econGrid = el('div', { className: 'studio-econ-grid' });
+    STUDIO_MONETIZATION_LADDER.forEach(function(item) {
+      econGrid.appendChild(el('div', { className: 'studio-econ-card' }, [
+        el('div', { className: 'studio-econ-top' }, [
+          el('div', { className: 'studio-econ-label' }, item.kicker),
+          el('span', { className: 'badge badge-accent' }, 'Revenue')
+        ]),
+        el('div', { className: 'studio-ladder-title' }, item.title),
+        el('div', { className: 'studio-econ-copy' }, item.copy),
+        el('div', { className: 'studio-econ-detail' }, item.footer)
+      ]));
+    });
+    monetization.appendChild(econGrid);
+    shell.appendChild(monetization);
+
+    var stubs = el('section', { className: 'studio-section' });
+    stubs.appendChild(el('div', { className: 'studio-section-header' }, [
+      el('div', null, [
+        el('div', { className: 'studio-kicker' }, 'Adapter backlog'),
+        el('h3', { className: 'studio-section-title' }, 'External systems still intentionally stubbed'),
+        el('p', { className: 'studio-section-copy' }, 'The business logic should exist before vendor lock-in. These integrations stay as explicit stubs until the human approves real accounts, spend, and publishing credentials.')
+      ])
+    ]));
+    var stubGrid = el('div', { className: 'studio-econ-grid' });
+    state.integrations.forEach(function(item) {
+      stubGrid.appendChild(el('div', { className: 'studio-econ-card' }, [
+        el('div', { className: 'studio-econ-top' }, [
+          el('div', { className: 'studio-econ-label' }, item.status || 'stub'),
+          el('span', { className: 'badge badge-yellow' }, 'Blocked on integration')
+        ]),
+        el('div', { className: 'studio-ladder-title' }, item.name),
+        el('div', { className: 'studio-econ-copy' }, item.detail)
+      ]));
+    });
+    stubs.appendChild(stubGrid);
+    stubs.appendChild(el('div', { className: 'studio-footnote' }, 'Last updated ' + new Date(state.lastUpdated).toLocaleString() + '. The next product slice should store topic packets, script briefs, publish payload templates, and monetization offers as first-class records rather than static seed data.'));
+    shell.appendChild(stubs);
+
+    panel.appendChild(shell);
+  }).catch(function(err) {
+    panel.textContent = '';
+    panel.appendChild(el('div', { className: 'request-empty' }, 'Could not load Studio: ' + (err && err.message ? err.message : err)));
+  });
+}
+
 function renderAppContent(appId) {
   // Map new IDs to panel elements (activity uses app-artifacts panel)
   var panelId = appId;
@@ -3444,7 +4917,8 @@ function renderAppContent(appId) {
   var panel = document.getElementById('app-' + panelId);
   if (!panel) return;
   panel.textContent = '';
-  if (appId === 'tasks') renderTasksApp(panel);
+  if (appId === 'studio') renderStudioApp(panel);
+  else if (appId === 'tasks') renderTasksApp(panel);
   else if (appId === 'requests') renderRequestsApp(panel);
   else if (appId === 'policies') renderPoliciesApp(panel);
   else if (appId === 'calendar') renderCalendarApp(panel);
@@ -6688,6 +8162,7 @@ function initWizard() {
       } else {
         var startStep = (state && state.step) ? state.step : 'welcome';
         document.getElementById('onboarding-wizard').style.display = '';
+        renderStarterTemplates();
         renderWizardProgress(startStep);
         showWizardStep(startStep);
       }
@@ -6696,6 +8171,7 @@ function initWizard() {
       var errMsg = err && err.message ? err.message : String(err);
       console.error('[wizard] initWizard error: ' + errMsg);
       document.getElementById('onboarding-wizard').style.display = '';
+      renderStarterTemplates();
       renderWizardProgress('welcome');
       showWizardStep('welcome');
     });
@@ -7532,6 +9008,7 @@ function enterDMMode(agentSlug) {
 
   // Update composer placeholder
   document.getElementById('composer-input').placeholder = 'Message ' + agent.name + ' directly...';
+  document.getElementById('composer-input').setAttribute('aria-label', 'Direct message ' + agent.name);
 
   // Show DM thread, hide regular messages
   document.getElementById('messages').style.display = 'none';
@@ -7615,6 +9092,7 @@ function onDMChannelEnter(slug) {
     document.getElementById('channel-title').textContent = agent.name;
     document.getElementById('channel-desc').textContent = 'direct message';
     document.getElementById('composer-input').placeholder = 'Message ' + agent.name + '\u2026';
+    document.getElementById('composer-input').setAttribute('aria-label', 'Direct message ' + agent.name);
     document.getElementById('dm-stream-title').textContent = agent.name + ' \u2014 live output';
   }
   // Activate split layout: messages left, stream right
@@ -7992,6 +9470,10 @@ function renderStreamLine(container, rawText) {
       container.appendChild(toolCard);
       return;
     }
+
+    // Unknown completed items are usually bookkeeping noise (for example
+    // plan/update events) and render as unhelpful "item.completed" cards.
+    return;
   }
 
   // ── Fallback for any other structured event ──

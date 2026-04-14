@@ -1,0 +1,659 @@
+channel:
+  primary_brand: "Back Office AI"
+  thesis: "AI Back Office for Small Teams"
+  launch_wedge: "Founder-led service businesses and agencies with 2-20 people"
+
+backlog_rules:
+  scoring_weights:
+    pain: 5
+    buyer_intent: 5
+    originality: 5
+    product_fit: 5
+  publishing_rule: "Ship the highest-scoring episode that also balances the pillar mix and CTA mix."
+  no_go_topics:
+    - "generic AI news"
+    - "passive income with AI"
+    - "celebrity or clip compilation content"
+    - "workflow claims with no demonstrable before/after"
+
+tier_plan:
+  - id: tier_1_launch
+    label: "First 10 videos"
+    purpose: "Prove packaging, email capture, and one affiliate category."
+  - id: tier_2_prove_winners
+    label: "Second 10 videos"
+    purpose: "Double down on winning pain words and identify one product wedge."
+  - id: tier_3_expand_catalog
+    label: "Third 10 videos"
+    purpose: "Broaden into adjacent workflows once the core lane is established."
+
+episodes:
+  - id: vid_01
+    tier: tier_1_launch
+    priority: 1
+    working_title: "I Built an AI Inbox Operator for a 5-Person Business"
+    pillar: role_replacement
+    audience: "agency owners and founder-operators"
+    workflow: "inbox triage and routing"
+    search_intent: "AI assistant for founders"
+    primary_cta: ai_back_office_starter_pack
+    fallback_cta: workflow_checklists
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "INBOX FIXED"
+    thumbnail_visual: "messy inbox contrasted with a clean triage board"
+    proof_asset: "triage checklist"
+    scores:
+      pain: 5
+      buyer_intent: 5
+      originality: 4
+      product_fit: 5
+
+  - id: vid_02
+    tier: tier_1_launch
+    priority: 2
+    working_title: "Replace Your Weekly Status Report With This AI Ops Loop"
+    pillar: function_specific_systems
+    audience: "small service teams"
+    workflow: "weekly reporting"
+    search_intent: "automated reporting for small business"
+    primary_cta: workflow_checklists
+    fallback_cta: low_ticket_template_packs
+    affiliate_category: automation_and_docs
+    sponsor_category: analytics
+    thumbnail_text: "NO MORE REPORTS"
+    thumbnail_visual: "spreadsheet stack versus one dashboard card"
+    proof_asset: "reporting template"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 4
+      product_fit: 5
+
+  - id: vid_03
+    tier: tier_1_launch
+    priority: 3
+    working_title: "The Best AI Stack for Follow-Ups If You Have No SDR Team"
+    pillar: tool_stack_teardowns
+    audience: "founder-led sales teams"
+    workflow: "follow-up and lead routing"
+    search_intent: "best CRM for founder-led sales"
+    primary_cta: affiliate_stack_pages
+    fallback_cta: ai_back_office_starter_pack
+    affiliate_category: crm_and_outreach
+    sponsor_category: crm
+    thumbnail_text: "BEST FOLLOW-UP STACK"
+    thumbnail_visual: "three-tool scorecard with one stack highlighted"
+    proof_asset: "stack comparison sheet"
+    scores:
+      pain: 5
+      buyer_intent: 5
+      originality: 3
+      product_fit: 5
+
+  - id: vid_04
+    tier: tier_1_launch
+    priority: 4
+    working_title: "We Rebuilt Customer Support for a Tiny Team in 4 Steps"
+    pillar: before_after_rebuilds
+    audience: "agencies and consultancies"
+    workflow: "support triage"
+    search_intent: "AI customer support workflow"
+    primary_cta: function_template_packs
+    fallback_cta: ai_back_office_audit
+    affiliate_category: helpdesk_and_support
+    sponsor_category: support
+    thumbnail_text: "SUPPORT, FIXED"
+    thumbnail_visual: "chaotic support inbox versus structured ticket flow"
+    proof_asset: "support workflow pack"
+    scores:
+      pain: 5
+      buyer_intent: 4
+      originality: 4
+      product_fit: 5
+
+  - id: vid_05
+    tier: tier_1_launch
+    priority: 5
+    working_title: "7 Tasks Every Founder Should Automate Before Hiring"
+    pillar: templates_and_playbooks
+    audience: "founders with 2-10 people"
+    workflow: "back-office prioritization"
+    search_intent: "tasks every founder should automate"
+    primary_cta: ai_back_office_starter_pack
+    fallback_cta: low_ticket_template_packs
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "AUTOMATE THESE 7"
+    thumbnail_visual: "checklist sheet with three items circled in red"
+    proof_asset: "starter pack"
+    scores:
+      pain: 4
+      buyer_intent: 5
+      originality: 3
+      product_fit: 5
+
+  - id: vid_06
+    tier: tier_1_launch
+    priority: 6
+    working_title: "This AI Workflow Turns Meeting Notes Into Action Items Automatically"
+    pillar: function_specific_systems
+    audience: "operators drowning in meetings"
+    workflow: "meeting notes to tasks"
+    search_intent: "meeting notes to action items"
+    primary_cta: affiliate_stack_pages
+    fallback_cta: workflow_checklists
+    affiliate_category: meeting_tools
+    sponsor_category: meeting_tools
+    thumbnail_text: "MEETINGS TO TASKS"
+    thumbnail_visual: "calendar and notes turning into task cards"
+    proof_asset: "meeting-to-action playbook"
+    scores:
+      pain: 5
+      buyer_intent: 5
+      originality: 4
+      product_fit: 5
+
+  - id: vid_07
+    tier: tier_1_launch
+    priority: 7
+    working_title: "Stop Writing SOPs Manually: Use This AI Documentation System"
+    pillar: templates_and_playbooks
+    audience: "ops leads and agency owners"
+    workflow: "SOP generation and upkeep"
+    search_intent: "AI SOP system"
+    primary_cta: low_ticket_template_packs
+    fallback_cta: workflow_checklists
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "NO MORE MANUAL SOPS"
+    thumbnail_visual: "blank doc versus structured SOP board"
+    proof_asset: "SOP bundle"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 4
+      product_fit: 5
+
+  - id: vid_08
+    tier: tier_1_launch
+    priority: 8
+    working_title: "How to Run Lead Qualification Without a Full-Time Coordinator"
+    pillar: role_replacement
+    audience: "small sales teams"
+    workflow: "lead qualification"
+    search_intent: "AI lead qualification workflow"
+    primary_cta: workflow_checklists
+    fallback_cta: ai_back_office_audit
+    affiliate_category: crm_and_outreach
+    sponsor_category: crm
+    thumbnail_text: "QUALIFY LEADS FAST"
+    thumbnail_visual: "lead pile versus routed pipeline"
+    proof_asset: "qualification template"
+    scores:
+      pain: 5
+      buyer_intent: 5
+      originality: 4
+      product_fit: 5
+
+  - id: vid_09
+    tier: tier_1_launch
+    priority: 9
+    working_title: "I Tested 5 AI Research Workflows for Small Teams. One Actually Works"
+    pillar: tool_stack_teardowns
+    audience: "generalist operators"
+    workflow: "research and brief prep"
+    search_intent: "AI research workflow for small teams"
+    primary_cta: ai_back_office_starter_pack
+    fallback_cta: affiliate_stack_pages
+    affiliate_category: automation_and_docs
+    sponsor_category: analytics
+    thumbnail_text: "1 WORKFLOW WON"
+    thumbnail_visual: "five workflow cards with one stamped approved"
+    proof_asset: "research scorecard"
+    scores:
+      pain: 3
+      buyer_intent: 3
+      originality: 5
+      product_fit: 4
+
+  - id: vid_10
+    tier: tier_1_launch
+    priority: 10
+    working_title: "The Cleanest Way to Automate Client Onboarding Emails"
+    pillar: function_specific_systems
+    audience: "agency owners"
+    workflow: "client onboarding"
+    search_intent: "automate client onboarding"
+    primary_cta: workflow_checklists
+    fallback_cta: ai_back_office_audit
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "ONBOARDING, CLEANED UP"
+    thumbnail_visual: "messy email thread versus onboarding checklist"
+    proof_asset: "onboarding checklist"
+    scores:
+      pain: 5
+      buyer_intent: 5
+      originality: 4
+      product_fit: 5
+
+  - id: vid_11
+    tier: tier_2_prove_winners
+    priority: 11
+    working_title: "Your Executive Assistant's First AI Teammate: Calendar + Inbox + Notes"
+    pillar: role_replacement
+    audience: "fractional operators and assistants"
+    workflow: "calendar, inbox, and notes coordination"
+    search_intent: "AI executive assistant"
+    primary_cta: ai_back_office_starter_pack
+    fallback_cta: affiliate_stack_pages
+    affiliate_category: meeting_tools
+    sponsor_category: meeting_tools
+    thumbnail_text: "AI EXECUTIVE ASSISTANT"
+    thumbnail_visual: "calendar, inbox, and notes merged into one board"
+    proof_asset: "assistant workflow map"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 4
+      product_fit: 5
+
+  - id: vid_12
+    tier: tier_2_prove_winners
+    priority: 12
+    working_title: "The No-Code AI Support Desk for Agencies and Consultancies"
+    pillar: tool_stack_teardowns
+    audience: "client-service teams"
+    workflow: "support desk setup"
+    search_intent: "best helpdesk for small teams"
+    primary_cta: affiliate_stack_pages
+    fallback_cta: function_template_packs
+    affiliate_category: helpdesk_and_support
+    sponsor_category: support
+    thumbnail_text: "NO-CODE SUPPORT DESK"
+    thumbnail_visual: "tool stack ladder beside a support queue"
+    proof_asset: "support stack page"
+    scores:
+      pain: 4
+      buyer_intent: 5
+      originality: 3
+      product_fit: 5
+
+  - id: vid_13
+    tier: tier_2_prove_winners
+    priority: 13
+    working_title: "How to Build a Weekly Sales Brief Without Touching a Spreadsheet"
+    pillar: before_after_rebuilds
+    audience: "founder-led sales teams"
+    workflow: "sales reporting"
+    search_intent: "weekly sales brief automation"
+    primary_cta: workflow_checklists
+    fallback_cta: low_ticket_template_packs
+    affiliate_category: crm_and_outreach
+    sponsor_category: analytics
+    thumbnail_text: "NO SPREADSHEETS"
+    thumbnail_visual: "spreadsheet chaos versus a one-page sales brief"
+    proof_asset: "sales brief template"
+    scores:
+      pain: 4
+      buyer_intent: 5
+      originality: 4
+      product_fit: 5
+
+  - id: vid_14
+    tier: tier_2_prove_winners
+    priority: 14
+    working_title: "5 AI Automations That Save Small Teams Real Hours, Not Demo Hours"
+    pillar: templates_and_playbooks
+    audience: "small business operators"
+    workflow: "workflow prioritization"
+    search_intent: "AI automations for small teams"
+    primary_cta: low_ticket_template_packs
+    fallback_cta: ai_back_office_starter_pack
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "REAL HOURS SAVED"
+    thumbnail_visual: "five checklist cards with one timer icon"
+    proof_asset: "automation pack"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 3
+      product_fit: 5
+
+  - id: vid_15
+    tier: tier_2_prove_winners
+    priority: 15
+    working_title: "We Replaced Manual Lead Routing With an AI Triage System"
+    pillar: function_specific_systems
+    audience: "agency and consultancy founders"
+    workflow: "lead routing"
+    search_intent: "automate lead routing"
+    primary_cta: affiliate_stack_pages
+    fallback_cta: workflow_checklists
+    affiliate_category: crm_and_outreach
+    sponsor_category: crm
+    thumbnail_text: "LEAD ROUTING FIXED"
+    thumbnail_visual: "incoming leads split into clean pipeline stages"
+    proof_asset: "routing blueprint"
+    scores:
+      pain: 5
+      buyer_intent: 5
+      originality: 4
+      product_fit: 5
+
+  - id: vid_16
+    tier: tier_2_prove_winners
+    priority: 16
+    working_title: "The Best First AI Hire for a Founder With Too Many Tabs Open"
+    pillar: role_replacement
+    audience: "solo founders and tiny teams"
+    workflow: "cross-functional task handling"
+    search_intent: "first AI hire for founders"
+    primary_cta: ai_back_office_starter_pack
+    fallback_cta: ai_back_office_audit
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "FIRST AI HIRE"
+    thumbnail_visual: "browser tabs collapsing into one operator dashboard"
+    proof_asset: "starter pack"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 4
+      product_fit: 5
+
+  - id: vid_17
+    tier: tier_2_prove_winners
+    priority: 17
+    working_title: "This AI Workflow Writes Better Follow-Up Emails Than Most Teams"
+    pillar: function_specific_systems
+    audience: "founder-led sales teams"
+    workflow: "follow-up email drafting"
+    search_intent: "AI follow-up workflow"
+    primary_cta: workflow_checklists
+    fallback_cta: affiliate_stack_pages
+    affiliate_category: crm_and_outreach
+    sponsor_category: crm
+    thumbnail_text: "BETTER FOLLOW-UPS"
+    thumbnail_visual: "weak follow-up email versus strong templated send"
+    proof_asset: "follow-up template"
+    scores:
+      pain: 5
+      buyer_intent: 5
+      originality: 4
+      product_fit: 5
+
+  - id: vid_18
+    tier: tier_2_prove_winners
+    priority: 18
+    working_title: "I Mapped the Cheapest AI Stack for a Service Business"
+    pillar: tool_stack_teardowns
+    audience: "price-sensitive operators"
+    workflow: "stack selection"
+    search_intent: "cheapest AI stack for service business"
+    primary_cta: affiliate_stack_pages
+    fallback_cta: ai_back_office_starter_pack
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "CHEAPEST STACK"
+    thumbnail_visual: "budget stack ladder with prices blacked out except winner"
+    proof_asset: "budget stack scorecard"
+    scores:
+      pain: 4
+      buyer_intent: 5
+      originality: 4
+      product_fit: 5
+
+  - id: vid_19
+    tier: tier_2_prove_winners
+    priority: 19
+    working_title: "Turn Sales Calls Into Proposals, Tasks, and CRM Notes Automatically"
+    pillar: before_after_rebuilds
+    audience: "agencies and consultants"
+    workflow: "call follow-up"
+    search_intent: "sales calls to proposal workflow"
+    primary_cta: function_template_packs
+    fallback_cta: affiliate_stack_pages
+    affiliate_category: meeting_tools
+    sponsor_category: crm
+    thumbnail_text: "CALL TO PROPOSAL"
+    thumbnail_visual: "meeting notes flowing into proposal and CRM cards"
+    proof_asset: "proposal workflow pack"
+    scores:
+      pain: 5
+      buyer_intent: 5
+      originality: 4
+      product_fit: 5
+
+  - id: vid_20
+    tier: tier_2_prove_winners
+    priority: 20
+    working_title: "How to Build an AI Customer Success Assistant"
+    pillar: role_replacement
+    audience: "small customer success teams"
+    workflow: "customer success follow-up"
+    search_intent: "AI customer success assistant"
+    primary_cta: workflow_checklists
+    fallback_cta: function_template_packs
+    affiliate_category: helpdesk_and_support
+    sponsor_category: support
+    thumbnail_text: "AI CS ASSISTANT"
+    thumbnail_visual: "customer account board with alerts and follow-ups"
+    proof_asset: "CS checklist"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 4
+      product_fit: 4
+
+  - id: vid_21
+    tier: tier_3_expand_catalog
+    priority: 21
+    working_title: "We Cut Admin Time by Rebuilding the Handoff Workflow"
+    pillar: before_after_rebuilds
+    audience: "service delivery teams"
+    workflow: "internal handoffs"
+    search_intent: "handoff workflow redesign"
+    primary_cta: function_template_packs
+    fallback_cta: ai_back_office_audit
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "CUT ADMIN TIME"
+    thumbnail_visual: "handoff mess versus clean stage-by-stage handoff"
+    proof_asset: "handoff template"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 4
+      product_fit: 4
+
+  - id: vid_22
+    tier: tier_3_expand_catalog
+    priority: 22
+    working_title: "The AI Reporting System I Wish Every Agency Used"
+    pillar: function_specific_systems
+    audience: "agency operators"
+    workflow: "agency reporting"
+    search_intent: "AI reporting system for agencies"
+    primary_cta: low_ticket_template_packs
+    fallback_cta: affiliate_stack_pages
+    affiliate_category: automation_and_docs
+    sponsor_category: analytics
+    thumbnail_text: "AGENCY REPORTING SYSTEM"
+    thumbnail_visual: "client report deck versus one clean dashboard"
+    proof_asset: "reporting template"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 3
+      product_fit: 5
+
+  - id: vid_23
+    tier: tier_3_expand_catalog
+    priority: 23
+    working_title: "10 Automations for Founder-Led Sales Teams"
+    pillar: templates_and_playbooks
+    audience: "founders doing sales"
+    workflow: "sales ops checklist"
+    search_intent: "automations for founder-led sales"
+    primary_cta: low_ticket_template_packs
+    fallback_cta: affiliate_stack_pages
+    affiliate_category: crm_and_outreach
+    sponsor_category: crm
+    thumbnail_text: "10 SALES FIXES"
+    thumbnail_visual: "sales checklist board with pipeline icon"
+    proof_asset: "prompt pack"
+    scores:
+      pain: 4
+      buyer_intent: 5
+      originality: 3
+      product_fit: 5
+
+  - id: vid_24
+    tier: tier_3_expand_catalog
+    priority: 24
+    working_title: "This Is the Only AI Meeting Stack I'd Pay for in 2026"
+    pillar: tool_stack_teardowns
+    audience: "meeting-heavy teams"
+    workflow: "meeting stack selection"
+    search_intent: "best AI meeting tool"
+    primary_cta: affiliate_stack_pages
+    fallback_cta: workflow_checklists
+    affiliate_category: meeting_tools
+    sponsor_category: meeting_tools
+    thumbnail_text: "ONLY MEETING STACK"
+    thumbnail_visual: "three meeting tools with one boxed out"
+    proof_asset: "meeting stack page"
+    scores:
+      pain: 4
+      buyer_intent: 5
+      originality: 3
+      product_fit: 5
+
+  - id: vid_25
+    tier: tier_3_expand_catalog
+    priority: 25
+    working_title: "How to Automate Proposal Prep Without Sounding Robotic"
+    pillar: function_specific_systems
+    audience: "agencies and consultants"
+    workflow: "proposal preparation"
+    search_intent: "automate proposal prep"
+    primary_cta: function_template_packs
+    fallback_cta: ai_back_office_audit
+    affiliate_category: automation_and_docs
+    sponsor_category: crm
+    thumbnail_text: "BETTER PROPOSALS"
+    thumbnail_visual: "proposal draft versus polished deck outline"
+    proof_asset: "proposal pack"
+    scores:
+      pain: 4
+      buyer_intent: 5
+      originality: 4
+      product_fit: 5
+
+  - id: vid_26
+    tier: tier_3_expand_catalog
+    priority: 26
+    working_title: "The AI Back Office for a 1-Person Business"
+    pillar: role_replacement
+    audience: "solo operators"
+    workflow: "solo workflow orchestration"
+    search_intent: "AI back office for solo business"
+    primary_cta: ai_back_office_starter_pack
+    fallback_cta: low_ticket_template_packs
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "SOLO BACK OFFICE"
+    thumbnail_visual: "one person icon beside a multi-step system board"
+    proof_asset: "starter pack"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 4
+      product_fit: 4
+
+  - id: vid_27
+    tier: tier_3_expand_catalog
+    priority: 27
+    working_title: "We Rebuilt a Messy Support Queue Into an AI Workflow"
+    pillar: before_after_rebuilds
+    audience: "lean support teams"
+    workflow: "support queue redesign"
+    search_intent: "fix broken support workflow"
+    primary_cta: function_template_packs
+    fallback_cta: affiliate_stack_pages
+    affiliate_category: helpdesk_and_support
+    sponsor_category: support
+    thumbnail_text: "QUEUE TO SYSTEM"
+    thumbnail_visual: "overflowing queue versus sorted support board"
+    proof_asset: "support template"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 4
+      product_fit: 4
+
+  - id: vid_28
+    tier: tier_3_expand_catalog
+    priority: 28
+    working_title: "Which AI Tasks Are Safe to Automate, and Which Still Need Humans"
+    pillar: templates_and_playbooks
+    audience: "skeptical operators"
+    workflow: "task triage and risk scoring"
+    search_intent: "what AI tasks are safe to automate"
+    primary_cta: ai_back_office_starter_pack
+    fallback_cta: low_ticket_template_packs
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "SAFE VS STUPID"
+    thumbnail_visual: "green and red decision board"
+    proof_asset: "task triage worksheet"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 5
+      product_fit: 4
+
+  - id: vid_29
+    tier: tier_3_expand_catalog
+    priority: 29
+    working_title: "Build an AI RevOps Assistant Without Enterprise Software"
+    pillar: tool_stack_teardowns
+    audience: "small SaaS and services teams"
+    workflow: "RevOps stack setup"
+    search_intent: "AI RevOps assistant"
+    primary_cta: affiliate_stack_pages
+    fallback_cta: ai_back_office_audit
+    affiliate_category: crm_and_outreach
+    sponsor_category: crm
+    thumbnail_text: "REVOPS WITHOUT ENTERPRISE"
+    thumbnail_visual: "pipeline and reporting stack with lean-price framing"
+    proof_asset: "RevOps stack page"
+    scores:
+      pain: 4
+      buyer_intent: 5
+      originality: 4
+      product_fit: 4
+
+  - id: vid_30
+    tier: tier_3_expand_catalog
+    priority: 30
+    working_title: "The 30-Day AI Back Office Plan for a Small Team"
+    pillar: templates_and_playbooks
+    audience: "repeat viewers ready to implement"
+    workflow: "30-day rollout plan"
+    search_intent: "AI back office plan"
+    primary_cta: low_ticket_template_packs
+    fallback_cta: ai_back_office_audit
+    affiliate_category: automation_and_docs
+    sponsor_category: automation
+    thumbnail_text: "30-DAY PLAN"
+    thumbnail_visual: "calendar board with a staged rollout checklist"
+    proof_asset: "full bundle waitlist"
+    scores:
+      pain: 4
+      buyer_intent: 4
+      originality: 4
+      product_fit: 5

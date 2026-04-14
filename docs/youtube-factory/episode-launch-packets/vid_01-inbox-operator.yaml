@@ -1,0 +1,119 @@
+metadata:
+  id: "vid_01_inbox_operator_launch_packet"
+  version: 1
+  status: "qa_ready_dry_run"
+  updated_at: "2026-04-14"
+  owner: "gtm"
+  source_backlog_id: "vid_01"
+  source_channel_pack: "../default-channel-pack.yaml"
+
+episode:
+  episode_id: "vid_01"
+  working_slug: "ai-inbox-operator-5-person-business"
+  pillar: "role_replacement"
+  audience: "agency owners and founder-operators"
+  workflow: "inbox triage and routing"
+  search_intent: "AI assistant for founders"
+  promise: "Show a 5-person business how to turn an overloaded inbox into a routed operating queue."
+  proof_asset:
+    name: "Inbox Triage Workflow Checklist"
+    type: "checklist"
+    delivery_offer_id: "ai_back_office_starter_pack"
+
+packaging:
+  final_title: "I Built an AI Inbox Operator for a 5-Person Business"
+  backup_titles:
+    - "Replace Inbox Chaos With This AI Ops System"
+    - "How a 5-Person Team Can Fix Inbox Triage With AI"
+  title_family: "role_build"
+  thumbnail:
+    family: "chaos_vs_system"
+    text: "INBOX FIXED"
+    focal_object: "split-screen inbox transforming into a routed triage board"
+    visual_notes:
+      - "messy left side with unread messages and loose tasks"
+      - "clean right side with labeled queues: urgent, delegate, reply, archive"
+      - "use paper background and contrast-heavy charcoal labels"
+    avoid:
+      - "robot face"
+      - "money imagery"
+      - "large generic AI logos"
+  hook_promise: "If your inbox is acting like your project manager, this episode shows the system that takes that job back."
+
+cta_plan:
+  primary_offer_id: "ai_back_office_starter_pack"
+  primary_offer_name: "AI Back Office Starter Pack"
+  primary_link:
+    label: "AI Back Office Starter Pack"
+    url_template: "{{owned_audience_base_url}}/starter-pack?utm_source=youtube&utm_medium=longform_description&utm_campaign=ai_back_office_starter_pack-ai-inbox-operator-5-person-business"
+    status: "needs_real_url_before_publish"
+  secondary_offer_id: "workflow_checklists"
+  secondary_offer_name: "Workflow Checklist Library"
+  secondary_link:
+    label: "Inbox Triage Workflow Checklist"
+    url_template: "{{owned_audience_base_url}}/checklists/inbox-triage?utm_source=youtube&utm_medium=longform_description&utm_campaign=workflow_checklists-ai-inbox-operator-5-person-business"
+    status: "needs_real_url_before_publish"
+  on_screen_line: "Grab the starter pack below if you want the exact inbox triage checklist."
+
+publish_payload:
+  playlist_id: "ai_roles"
+  tags:
+    - "ai automation"
+    - "small business systems"
+    - "inbox management"
+    - "founder productivity"
+    - "agency operations"
+    - "back office ai"
+  description: |-
+    If your team is still triaging email manually, start here:
+    AI Back Office Starter Pack -> {{owned_audience_base_url}}/starter-pack?utm_source=youtube&utm_medium=longform_description&utm_campaign=ai_back_office_starter_pack-ai-inbox-operator-5-person-business
+
+    In this video:
+    - why inbox chaos becomes hidden operations debt for small teams
+    - the four-bucket triage system that routes email without adding another full-time coordinator
+    - how to turn that routing logic into a repeatable AI-assisted workflow
+
+    Tools mentioned:
+    - shared inbox or Gmail labels
+    - task board or ticket queue
+    - automation layer for routing and summaries
+
+    If you want the inbox checklist from this episode:
+    Inbox Triage Workflow Checklist -> {{owned_audience_base_url}}/checklists/inbox-triage?utm_source=youtube&utm_medium=longform_description&utm_campaign=workflow_checklists-ai-inbox-operator-5-person-business
+
+    Some links may be affiliate links. If you buy through them, it helps fund more operator-grade breakdowns at no extra cost to you.
+  pinned_comment: |-
+    The workflow template from this video is here:
+    {{owned_audience_base_url}}/starter-pack?utm_source=youtube&utm_medium=pinned_comment&utm_campaign=ai_back_office_starter_pack-ai-inbox-operator-5-person-business
+
+    If you want another small-team workflow broken down, reply with the messiest process in your business right now.
+  chapters:
+    - time: "00:00"
+      label: "Why inbox chaos gets expensive fast"
+    - time: "00:39"
+      label: "The four-bucket triage system"
+    - time: "02:16"
+      label: "How the AI inbox operator routes work"
+    - time: "05:08"
+      label: "What a human still has to approve"
+    - time: "07:01"
+      label: "The checklist and next workflow"
+
+repurposing:
+  shorts_hooks:
+    - "Your inbox should not be your project manager."
+    - "A 5-person business does not need another inbox fire drill."
+  newsletter_angle: "The four-bucket inbox system that stops email from becoming hidden ops debt."
+  linkedin_post_angle: "Manual inbox triage quietly creates more operating drag than founders admit."
+
+qa_checklist:
+  must_pass:
+    - "Primary CTA is the starter pack and appears before any secondary resource."
+    - "Thumbnail says 'INBOX FIXED' and the title carries the role-build framing."
+    - "Description first line, hook, and thumbnail all point at inbox triage."
+    - "No claim implies fully autonomous email handling."
+    - "Human review stays explicit for customer-facing replies and escalations."
+  block_if:
+    - "The asset linked is not real."
+    - "The video drifts into a generic AI tools roundup."
+    - "Any sponsored mention appears before proof."

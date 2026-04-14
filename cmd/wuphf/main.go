@@ -95,6 +95,14 @@ func main() {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
 				os.Exit(1)
 			}
+			if err := team.CleanupPersistedTaskWorktrees(); err != nil {
+				fmt.Fprintf(os.Stderr, "error: cleanup task worktrees: %v\n", err)
+				os.Exit(1)
+			}
+			if err := team.ClearPersistedBrokerState(); err != nil {
+				fmt.Fprintf(os.Stderr, "error: clear broker state: %v\n", err)
+				os.Exit(1)
+			}
 			fmt.Println("Session shredded. The office is dark. Michael is probably crying in the parking lot.")
 			return
 		case "init":

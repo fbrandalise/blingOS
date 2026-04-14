@@ -1,0 +1,146 @@
+channel:
+  thesis: "AI Back Office for Small Teams"
+  launch_wedge: "Founder-led service businesses and agencies with 2-20 people"
+  primary_brand: "Back Office AI"
+
+cta_rules:
+  role_replacement:
+    primary_offer: ai_back_office_starter_pack
+    fallback_offer: ai_back_office_audit
+  function_specific_systems:
+    primary_offer: workflow_checklists
+    fallback_offer: function_template_packs
+  tool_stack_teardowns:
+    primary_offer: affiliate_stack_pages
+    fallback_offer: ai_back_office_starter_pack
+  before_after_rebuilds:
+    primary_offer: ai_back_office_audit
+    fallback_offer: implementation_sprint
+  templates_and_playbooks:
+    primary_offer: low_ticket_template_packs
+    fallback_offer: ai_back_office_starter_pack
+
+offers:
+  lead_magnets:
+    - id: ai_back_office_starter_pack
+      name: "AI Back Office Starter Pack"
+      stage: day_0
+      format: "PDF + Notion + prompt pack"
+      promise: "5 workflows every small team should automate before hiring"
+      target_roles:
+        - founder
+        - ops_lead
+        - agency_owner
+    - id: workflow_checklists
+      name: "Workflow Checklist Library"
+      stage: day_0
+      format: "role-specific checklists"
+      promise: "deploy one workflow this week"
+      target_roles:
+        - founder
+        - coordinator
+        - executive_assistant
+    - id: affiliate_stack_pages
+      name: "Recommended Tool Stack"
+      stage: day_0
+      format: "description links + stack page"
+      promise: "use the lightest stack that can run the system"
+      target_roles:
+        - founder
+        - ops_lead
+
+  affiliate_categories:
+    - id: meeting_tools
+      stage: day_0
+      fit_for:
+        - meeting_notes
+        - action_item_workflows
+        - call_follow_up
+      disclosure: "Some links may be affiliate links."
+    - id: crm_and_outreach
+      stage: day_0
+      fit_for:
+        - follow_up
+        - lead_routing
+        - founder_led_sales
+      disclosure: "Some links may be affiliate links."
+    - id: helpdesk_and_support
+      stage: day_0
+      fit_for:
+        - support_triage
+        - inbox_cleanup
+        - customer_success
+      disclosure: "Some links may be affiliate links."
+    - id: automation_and_docs
+      stage: day_0
+      fit_for:
+        - sops
+        - onboarding
+        - reporting
+      disclosure: "Some links may be affiliate links."
+
+  digital_products:
+    - id: function_template_packs
+      name: "Function Template Packs"
+      stage: post_10_videos
+      price_range: "$19-$49"
+      examples:
+        - "Inbox Triage Kit"
+        - "Meeting-to-Action System"
+        - "Client Onboarding Workflow Pack"
+    - id: low_ticket_template_packs
+      name: "Small-Team Automation Packs"
+      stage: post_10_videos
+      price_range: "$29-$79"
+      examples:
+        - "30 Automations for Small Teams"
+        - "Founder-Led Sales Follow-Up Pack"
+        - "Support Workflow Bundle"
+
+  services:
+    - id: ai_back_office_audit
+      name: "AI Back Office Audit"
+      stage: once_inbound_intent_appears
+      price_range: "$250-$750"
+      outcome: "workflow diagnosis plus 30-day implementation plan"
+    - id: implementation_sprint
+      name: "Implementation Sprint"
+      stage: once_audit_converts
+      price_range: "$1500-$5000+"
+      outcome: "done-with-you system build for one workflow"
+
+  sponsorships:
+    - id: sponsor_inventory
+      name: "Operator software sponsors"
+      stage: once_repeatable_view_floor_exists
+      approved_categories:
+        - crm
+        - support
+        - automation
+        - meeting_tools
+        - analytics
+      required_disclosure: "Includes paid promotion"
+
+publish_defaults:
+  description_blocks:
+    - primary_cta
+    - video_bullets
+    - tools_mentioned
+    - secondary_cta
+    - disclosure
+  pinned_comment_blocks:
+    - primary_cta
+    - engagement_prompt
+  sponsor_safe_slots:
+    - preroll_15_seconds
+    - midroll_after_first_framework
+    - pinned_comment
+    - description_block
+
+utm_defaults:
+  source: youtube
+  mediums:
+    - longform_description
+    - pinned_comment
+    - short_comment
+  campaign_pattern: "{{offer_id}}-{{video_slug}}"

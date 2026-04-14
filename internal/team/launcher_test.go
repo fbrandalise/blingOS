@@ -824,6 +824,47 @@ func TestTaskNotificationContentIncludesWorktreeDetails(t *testing.T) {
 	}
 }
 
+func TestBuildTaskExecutionPacketLocalWorktreeForbidsNestedOffice(t *testing.T) {
+	l := &Launcher{}
+	got := l.buildTaskExecutionPacket("eng", officeActionLog{
+		Kind:  "task_updated",
+		Actor: "ceo",
+	}, teamTask{
+		ID:            "task-11",
+		Channel:       "general",
+		Title:         "Build the channel operations MVP",
+		Details:       "Wire `docs/youtube-factory/default-channel-pack.yaml` into `cmd/wuphf/main.go` first.",
+		Owner:         "eng",
+		Status:        "in_progress",
+		ExecutionMode: "local_worktree",
+		WorktreePath:  "/tmp/wuphf-task-task-11",
+	}, "Start implementing the web UI MVP now.")
+	if !strings.Contains(got, "default to direct implementation") {
+		t.Fatalf("expected direct implementation rule in packet: %q", got)
+	}
+	if !strings.Contains(got, "never launch another WUPHF office") {
+		t.Fatalf("expected nested office ban in packet: %q", got)
+	}
+	if !strings.Contains(got, "smallest shippable implementation slice") {
+		t.Fatalf("expected bounded implementation guidance in packet: %q", got)
+	}
+	if !strings.Contains(got, "post team_status naming that cut line before you read files") {
+		t.Fatalf("expected cut-line team_status guidance in packet: %q", got)
+	}
+	if !strings.Contains(got, "Named file targets: docs/youtube-factory/default-channel-pack.yaml, cmd/wuphf/main.go") {
+		t.Fatalf("expected named file targets in packet: %q", got)
+	}
+	if !strings.Contains(got, "open the named file targets first") {
+		t.Fatalf("expected named-file startup guidance in packet: %q", got)
+	}
+	if !strings.Contains(got, "do NOT start with `rg --files`") {
+		t.Fatalf("expected anti-audit guidance in packet: %q", got)
+	}
+	if !strings.Contains(got, "not satisfied by another plan, architecture memo, or audit summary") {
+		t.Fatalf("expected deliverable guidance in packet: %q", got)
+	}
+}
+
 func TestBuildPromptIncludesTaskStatusAndWorktreeGuidance(t *testing.T) {
 	l := &Launcher{
 		pack: &agent.PackDefinition{
@@ -842,6 +883,18 @@ func TestBuildPromptIncludesTaskStatusAndWorktreeGuidance(t *testing.T) {
 	if !strings.Contains(specialist, "working_directory") {
 		t.Fatalf("expected working_directory guidance in specialist prompt: %q", specialist)
 	}
+	if !strings.Contains(specialist, "default to direct implementation in the assigned worktree") {
+		t.Fatalf("expected direct implementation guidance in specialist prompt: %q", specialist)
+	}
+	if !strings.Contains(specialist, "do NOT start with `rg --files`") {
+		t.Fatalf("expected anti-audit guidance in specialist prompt: %q", specialist)
+	}
+	if !strings.Contains(specialist, "post a `team_status` naming that cut line") {
+		t.Fatalf("expected cut-line status guidance in specialist prompt: %q", specialist)
+	}
+	if !strings.Contains(specialist, "Never launch another WUPHF office") {
+		t.Fatalf("expected nested office warning in specialist prompt: %q", specialist)
+	}
 
 	lead := l.buildPrompt("ceo")
 	if !strings.Contains(lead, "team_task_status") {
@@ -849,6 +902,96 @@ func TestBuildPromptIncludesTaskStatusAndWorktreeGuidance(t *testing.T) {
 	}
 	if !strings.Contains(lead, "working_directory") {
 		t.Fatalf("expected working_directory guidance in lead prompt: %q", lead)
+	}
+	if !strings.Contains(lead, "Narrative next steps without durable tasks are a failure") {
+		t.Fatalf("expected lead prompt to forbid narrative-only next steps: %q", lead)
+	}
+	if !strings.Contains(lead, "do NOT create a first feature task with a giant title like `ship the whole MVP`") {
+		t.Fatalf("expected lead prompt to require bounded feature tasks: %q", lead)
+	}
+	if !strings.Contains(lead, "Do not bundle idea generation, script drafting, packaging, and monetization hooks into the same first task") {
+		t.Fatalf("expected lead prompt to forbid multi-output first feature tasks: %q", lead)
+	}
+	if !strings.Contains(lead, "do NOT put a standalone `research`, `audit`, or `cut line` task in front of the first engineering `feature` task") {
+		t.Fatalf("expected lead prompt to forbid prerequisite audit tasks before first feature: %q", lead)
+	}
+	if !strings.Contains(lead, "do NOT spend the whole first turn on `pwd`, `ls`, `rg --files`, `find .`, or a repo-wide file inventory") {
+		t.Fatalf("expected lead prompt to forbid repo-wide inventory in first turn: %q", lead)
+	}
+	if !strings.Contains(lead, "create the implementation task directly instead of narrating `repo audit first, implementation next`") {
+		t.Fatalf("expected lead prompt to forbid repo-audit-first sequencing: %q", lead)
+	}
+	if !strings.Contains(lead, "the first turn must leave durable office state behind") {
+		t.Fatalf("expected lead prompt to require durable office state on first turn: %q", lead)
+	}
+	if !strings.Contains(lead, "reuse or update that task instead of creating an overlapping duplicate") {
+		t.Fatalf("expected lead prompt to forbid overlapping duplicate tasks: %q", lead)
+	}
+}
+
+func TestResponseInstructionForLeadOnSpecialistWakeRequiresContinuation(t *testing.T) {
+	l := &Launcher{
+		pack: &agent.PackDefinition{
+			LeadSlug: "ceo",
+			Agents:   []agent.AgentConfig{{Slug: "ceo", Name: "CEO"}},
+		},
+	}
+
+	got := l.responseInstructionForTarget(channelMessage{From: "eng", Channel: "general", Content: "audit done"}, "ceo")
+	if !strings.Contains(got, "create the next owned team_task records") {
+		t.Fatalf("expected continuation guidance in lead response instruction: %q", got)
+	}
+	if !strings.Contains(got, "reuse or update that task instead of creating an overlapping duplicate") {
+		t.Fatalf("expected duplicate-task avoidance in lead response instruction: %q", got)
+	}
+}
+
+func TestResponseInstructionForLeadOnHumanBuildAskRequiresSingleSlice(t *testing.T) {
+	l := &Launcher{
+		pack: &agent.PackDefinition{
+			LeadSlug: "ceo",
+			Agents:   []agent.AgentConfig{{Slug: "ceo", Name: "CEO"}},
+		},
+	}
+
+	got := l.responseInstructionForTarget(channelMessage{From: "you", Channel: "general", Content: "Build this end to end"}, "ceo")
+	if !strings.Contains(got, "first engineering task itself must be a single smallest runnable feature slice") {
+		t.Fatalf("expected single-slice guidance in human-wake lead response instruction: %q", got)
+	}
+	if !strings.Contains(got, "Do not put a separate repo audit, architecture, or cut-line research task in front of that first feature") {
+		t.Fatalf("expected anti-prerequisite-audit guidance in human-wake lead response instruction: %q", got)
+	}
+	if !strings.Contains(got, "Do not spend the whole first turn on `pwd`, `ls`, `rg --files`, `find .`, or another repo-wide inventory") {
+		t.Fatalf("expected anti-repo-inventory guidance in human-wake lead response instruction: %q", got)
+	}
+	if !strings.Contains(got, "create the first durable task/channel state in that same turn") {
+		t.Fatalf("expected same-turn durable-state guidance in human-wake lead response instruction: %q", got)
+	}
+}
+
+func TestBuildTaskNotificationContextLeadFlagsReviewAction(t *testing.T) {
+	l := &Launcher{
+		pack: &agent.PackDefinition{
+			LeadSlug: "ceo",
+			Agents:   []agent.AgentConfig{{Slug: "ceo", Name: "CEO"}},
+		},
+		broker: &Broker{
+			tasks: []teamTask{
+				{
+					ID:          "task-1",
+					Title:       "Audit repo and define fastest path",
+					Owner:       "eng",
+					Status:      "review",
+					ReviewState: "ready_for_review",
+					UpdatedAt:   "2026-04-14T01:23:02Z",
+				},
+			},
+		},
+	}
+
+	got := l.buildTaskNotificationContext("", "ceo", 3)
+	if !strings.Contains(got, "waiting in review") {
+		t.Fatalf("expected review action guidance in lead task context: %q", got)
 	}
 }
 
@@ -862,8 +1005,8 @@ func TestTaskNotificationTargetsWakeOwnerOnWatchdog(t *testing.T) {
 	}
 	b.mu.Lock()
 	b.members = []officeMember{
-		{Slug: "ceo", Name: "CEO", },
-		{Slug: "fe", Name: "Frontend Engineer", },
+		{Slug: "ceo", Name: "CEO"},
+		{Slug: "fe", Name: "Frontend Engineer"},
 	}
 	b.mu.Unlock()
 	l := &Launcher{broker: b}
@@ -899,8 +1042,8 @@ func TestTaskNotificationTargetsDoNotRewakeCEOForOwnCreatedTask(t *testing.T) {
 	}
 	b.mu.Lock()
 	b.members = []officeMember{
-		{Slug: "ceo", Name: "CEO", },
-		{Slug: "fe", Name: "Frontend Engineer", },
+		{Slug: "ceo", Name: "CEO"},
+		{Slug: "fe", Name: "Frontend Engineer"},
 	}
 	b.mu.Unlock()
 	l := &Launcher{broker: b}
@@ -1470,13 +1613,17 @@ func TestResponseInstructionForTargetLeadFromSpecialist(t *testing.T) {
 		t.Errorf("expected quick-reply instruction when woken by human, got %q", humanInstr)
 	}
 
-	// Woken by specialist → should get "stay quiet unless needed" instruction
+	// Woken by specialist → should get continuation guidance, not the human-style
+	// quick-reply instruction.
 	specialistInstr := l.responseInstructionForTarget(channelMessage{From: "engineering"}, "ceo")
 	if strings.Contains(specialistInstr, "Give the first top-level reply quickly") {
 		t.Errorf("specialist wake-up should not use human-style quick-reply instruction, got %q", specialistInstr)
 	}
-	if !strings.Contains(specialistInstr, "stay quiet") {
-		t.Errorf("specialist wake-up should include stay-quiet guidance, got %q", specialistInstr)
+	if !strings.Contains(specialistInstr, "create the next owned team_task records") {
+		t.Errorf("specialist wake-up should include continuation guidance, got %q", specialistInstr)
+	}
+	if !strings.Contains(specialistInstr, "Stay quiet only when") {
+		t.Errorf("specialist wake-up should still describe the quiet case, got %q", specialistInstr)
 	}
 }
 
