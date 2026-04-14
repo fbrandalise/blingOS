@@ -133,7 +133,7 @@ Every claim in this README, grounded to the code that makes it true.
 | Fresh session per turn (no `--resume` accumulation) | ✅ shipped | `internal/team/headless_claude.go` |
 | Push-driven agent wakes (no heartbeat) | ✅ shipped | `internal/team/broker.go` |
 | Workspace isolation per agent | ✅ shipped | `internal/team/worktree.go` |
-| Telegram bridge | ✅ shipped | `internal/telegram/` |
+| Telegram bridge | ✅ shipped | `internal/team/telegram.go` |
 | Composio action provider | ✅ shipped | `/config set action_provider composio` |
 | `wuphf import` — migrate from Paperclip state | ✅ shipped | `cmd/wuphf/import.go` |
 | Live web-view agent streaming | 🟡 partial | `web/index.html` + broker stream |

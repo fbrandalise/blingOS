@@ -28,8 +28,8 @@ That's the whole fix. The `--no-nex` flag skips all Nex wiring at startup. No co
 If you want Nex gone from your fork entirely, there are four integration points to remove:
 
 ```bash
-# 1. Delete the Nex packages
-rm -rf nex/ mcp/nex*/
+# 1. Delete the Nex MCP server (if present)
+rm -f mcp/nex*
 
 # 2. Delete the Nex API client
 rm internal/action/nex_client.go
