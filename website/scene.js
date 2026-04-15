@@ -63,6 +63,9 @@
   let animF     = 0;
   let drawerHit = null;
   let drawerOpen = false;
+  const interactHits = [];  // { id, x, y, w, h }
+  let   activeReveal = null; // { id, x, y, content: string[] }
+  let   revealTimer  = null;
 
   setInterval(() => { flashOn = !flashOn; }, 500);
   setInterval(() => { animF = (animF + 1) % 4; }, 280);
@@ -116,6 +119,28 @@
     ctx.lineTo(pw.x + TW/2, pw.y);
     ctx.closePath();
     ctx.fillStyle = right; ctx.fill();
+  }
+
+  // ── Reveal popup ──────────────────────────────────────────────
+  function drawReveal(x, y, lines) {
+    const PW = 220;
+    const PH = lines.length * 14 + 16;
+    let rx = Math.min(x, W - PW - 8);
+    let ry = Math.max(y - PH - 8, 5);
+
+    ctx.fillStyle = C.surface;
+    ctx.fillRect(rx, ry, PW, PH);
+    ctx.strokeStyle = C.yellow; ctx.lineWidth = 2;
+    ctx.strokeRect(rx, ry, PW, PH);
+
+    ctx.fillStyle    = C.text;
+    ctx.font = '7px "Press Start 2P"'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    lines.forEach((line, i) => {
+      if (line.startsWith('$')) ctx.fillStyle = C.yellow;
+      else if (line.startsWith('//')) ctx.fillStyle = C.blue;
+      else ctx.fillStyle = C.text;
+      ctx.fillText(line, rx + 8, ry + 8 + i * 14);
+    });
   }
 
   // ── Back wall ──────────────────────────────────────────────────
@@ -524,6 +549,63 @@
       ctx.fillText('./wuphf', rx + 8, ry + 30);
     }
 
+    // Register interactable hit areas (rebuilt each frame from current positions)
+    interactHits.length = 0;
+
+    // 1. Paper on Pam's desk
+    const pamDesk = iso(2, 0);
+    interactHits.push({ id: 'paper', x: pamDesk.x + 16, y: pamDesk.y - 22 - 2, w: 16, h: 12,
+      content: ['CEO, PM, engineers,', 'all visible,', 'all working.'] });
+
+    // 2. Conference room whiteboard
+    const cp2 = iso(0, 0);
+    interactHits.push({ id: 'whiteboard', x: cp2.x - 40, y: OY - 2, w: 40, h: 30,
+      content: ['agent → broker', '→ channel', '→ human'] });
+
+    // 3. Agent monitor (CEO desk)
+    const ceoDesk = iso(5, 1);
+    interactHits.push({ id: 'monitor', x: ceoDesk.x + TW / 2 + 6, y: ceoDesk.y - 22 - 22, w: 28, h: 18,
+      content: ['Open source.', 'MIT license.', '$ go build -o wuphf'] });
+
+    // 4. Plant (first one — at gx=8,gy=0)
+    const plantC2 = isoCenter(8, 0);
+    interactHits.push({ id: 'plant', x: plantC2.x - 10, y: plantC2.y - 36, w: 20, h: 36,
+      content: ["Unlike Ryan Howard's", 'WUPHF, this one works.'] });
+
+    // 5. Snack jar (Kevin's area)
+    const jarC2 = isoCenter(5, 4);
+    interactHits.push({ id: 'snackjar', x: jarC2.x - 6, y: jarC2.y - 18, w: 12, h: 14,
+      content: ['No tokens wasted', 'on pleasantries.'] });
+
+    // 6. Beet farm map (Dwight's wall)
+    const bx2 = iso(0, 3).x - 65;
+    interactHits.push({ id: 'beetmap', x: bx2, y: OY - 22, w: 50, h: 38,
+      content: ['Identity theft is', 'not a joke, Jim!', '(easter egg found)'] });
+
+    // 7. Dundie award — small icon near conference room
+    const cp3 = iso(0, 0);
+    interactHits.push({ id: 'dundie', x: cp3.x - 36, y: OY + 18, w: 18, h: 18,
+      content: ['Best AI Office,', '2025.', '(Self-awarded.)'] });
+
+    // 8. Break room fridge — draw + register
+    const fridgeX = iso(8, 4).x + TW / 2 - 8;
+    const fridgeY = iso(8, 4).y - 20;
+    ctx.fillStyle = '#2A3040'; ctx.fillRect(fridgeX, fridgeY, 16, 20);
+    ctx.fillStyle = '#1A2030'; ctx.fillRect(fridgeX + 1, fridgeY + 10, 14, 9);
+    ctx.fillStyle = C.border;  ctx.fillRect(fridgeX + 13, fridgeY + 3, 2, 6);
+    if (flashOn) {
+      ctx.shadowColor = C.blue; ctx.shadowBlur = 4;
+      ctx.fillStyle   = C.blue; ctx.fillRect(fridgeX + 3, fridgeY + 5, 8, 3);
+      ctx.shadowBlur  = 0;
+    }
+    interactHits.push({ id: 'fridge', x: fridgeX, y: fridgeY, w: 16, h: 20,
+      content: ['$ git clone', '  github.com/', '  nex-crm/wuphf', '$ ./wuphf'] });
+
+    // Draw active reveal
+    if (activeReveal) {
+      drawReveal(activeReveal.x, activeReveal.y, activeReveal.content);
+    }
+
     // Characters (back-to-front sort by gx+gy)
     charHits.length = 0;
     const sorted = [...CHARS].sort((a, b) => (a.gx + a.gy) - (b.gx + b.gy));
@@ -580,6 +662,21 @@
       if (mx >= dx - 4 && mx <= dx + 74 &&
           my >= dy - 26 && my <= dy + 14) {
         drawerOpen = !drawerOpen;
+        return;
+      }
+    }
+
+    // Check interactable props
+    for (const hit of interactHits) {
+      if (mx >= hit.x && mx <= hit.x + hit.w &&
+          my >= hit.y && my <= hit.y + hit.h) {
+        if (activeReveal && activeReveal.id === hit.id) {
+          activeReveal = null;
+        } else {
+          activeReveal = { id: hit.id, x: hit.x + hit.w / 2, y: hit.y, content: hit.content };
+          clearTimeout(revealTimer);
+          revealTimer = setTimeout(() => { activeReveal = null; }, 5000);
+        }
         return;
       }
     }
