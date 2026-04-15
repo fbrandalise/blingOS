@@ -414,6 +414,57 @@
 
   const charHits = [];
   let activeThought = null;
+  let thoughtTimer  = null;
+
+  // ── Thought bubble ─────────────────────────────────────────────
+  function drawThought(char, centerX, charTopY) {
+    if (!activeThought || activeThought.id !== char.id) return;
+
+    const BW = 210, BH = 82;
+    let bx = Math.min(centerX - 95, W - BW - 10);
+    bx = Math.max(bx, 10);
+    let by = Math.max(charTopY - 90, 5);
+
+    // Panel
+    ctx.fillStyle = C.surface;
+    ctx.fillRect(bx, by, BW, BH);
+    ctx.strokeStyle = C.yellow; ctx.lineWidth = 3;
+    ctx.strokeRect(bx, by, BW, BH);
+
+    // Tail (triangle below panel pointing to character)
+    ctx.beginPath();
+    ctx.moveTo(bx + 20, by + BH);
+    ctx.lineTo(bx + 30, by + BH + 14);
+    ctx.lineTo(bx + 42, by + BH);
+    ctx.closePath();
+    ctx.fillStyle = C.surface; ctx.fill();
+    ctx.strokeStyle = C.yellow; ctx.stroke();
+    // Hide inner line of tail
+    ctx.fillStyle = C.surface; ctx.fillRect(bx + 21, by + BH - 1, 21, 4);
+
+    // Speaker name
+    ctx.fillStyle    = C.yellow;
+    ctx.font = '6px "Press Start 2P"'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(char.name, bx + 10, by + 8);
+
+    // Quote (word-wrapped)
+    ctx.fillStyle = C.text;
+    ctx.font = '18px "VT323"'; ctx.textBaseline = 'top';
+    const words  = char.quote.split(' ');
+    let line = '', lineY = by + 22;
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (ctx.measureText(test).width > BW - 20 && line) {
+        ctx.fillText(line, bx + 10, lineY);
+        line  = w;
+        lineY += 18;
+        if (lineY > by + BH - 6) { ctx.fillText(line + '...', bx + 10, lineY - 18); return; }
+      } else {
+        line = test;
+      }
+    }
+    ctx.fillText(line, bx + 10, lineY);
+  }
 
   // ── Main draw ──────────────────────────────────────────────────
   function draw() {
@@ -474,11 +525,41 @@
         ctx.fillText(firstName, c.x, cy - 8);
       }
 
+      drawThought(char, c.x, cy);
+
       charHits.push({ char, cx, cy, w: cw + 4, h: 54 });
     }
   }
 
   function loop() { draw(); requestAnimationFrame(loop); }
   loop();
+
+  canvas.addEventListener('click', e => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top)  * scaleY;
+
+    // Check characters
+    for (const hit of charHits) {
+      if (mx >= hit.cx && mx <= hit.cx + hit.w &&
+          my >= hit.cy && my <= hit.cy + hit.h) {
+        if (activeThought && activeThought.id === hit.char.id) {
+          activeThought = null;
+        } else {
+          activeThought = hit.char;
+          clearTimeout(thoughtTimer);
+          thoughtTimer = setTimeout(() => {
+            if (activeThought && activeThought.id === hit.char.id) activeThought = null;
+          }, 5000);
+        }
+        return;
+      }
+    }
+
+    // Click elsewhere — dismiss thought bubble
+    activeThought = null;
+  });
 
 })();
