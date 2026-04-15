@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/nex-crm/wuphf/internal/api"
 	"github.com/nex-crm/wuphf/internal/config"
@@ -47,6 +48,7 @@ type ScopedMemoryHit struct {
 	Identifier string
 	Title      string
 	Snippet    string
+	OwnerSlug  string
 }
 
 type SharedMemoryWrite struct {
@@ -135,6 +137,7 @@ func (nexMemoryBackend) QueryShared(ctx context.Context, query string, limit int
 		Identifier: "nex-context",
 		Title:      "Nex context",
 		Snippet:    strings.TrimSpace(resp.Answer),
+		OwnerSlug:  inferSharedMemoryOwner("", strings.TrimSpace(resp.Answer)),
 	}}, nil
 }
 func (nexMemoryBackend) WriteShared(ctx context.Context, note SharedMemoryWrite) (string, error) {
@@ -244,6 +247,7 @@ func (gbrainMemoryBackend) QueryShared(ctx context.Context, query string, limit 
 			Identifier: strings.TrimSpace(result.Slug),
 			Title:      title,
 			Snippet:    truncate(snippet, 220),
+			OwnerSlug:  inferSharedMemoryOwner(strings.TrimSpace(result.Slug), snippet),
 		})
 		if len(hits) >= limit && limit > 0 {
 			break
@@ -256,7 +260,8 @@ func (gbrainMemoryBackend) WriteShared(ctx context.Context, note SharedMemoryWri
 	if slug == "" {
 		slug = "shared-note"
 	}
-	slug = fmt.Sprintf("wuphf-shared-%s-%s", slug, time.Now().UTC().Format("20060102-150405"))
+	actor := slugify(firstNonEmpty(note.Actor, "wuphf"))
+	slug = fmt.Sprintf("wuphf-shared--%s--%s--%s", actor, slug, time.Now().UTC().Format("20060102-150405"))
 	raw, err := gbrain.Call(ctx, "put_page", map[string]any{
 		"slug":    slug,
 		"content": renderGBrainSharedMemoryPage(slug, note),
@@ -446,9 +451,9 @@ func gbrainMCPEnvVars() []string {
 func directMemoryPromptBlock() string {
 	switch activeMemoryBackendKind() {
 	case config.MemoryBackendNex:
-		return "Memory scopes:\n- team_memory_query: Read your private notes (`scope=private`) or shared org memory backed by Nex (`scope=shared`)\n- team_memory_write: Store private notes by default; only write shared memory after a durable outcome is real\n- team_memory_promote: Copy one of your private notes into shared Nex memory when it becomes canonical\n\n"
+		return "Memory scopes:\n- team_memory_query: Read your private notes (`scope=private`) or shared org memory backed by Nex (`scope=shared`)\n- team_memory_write: Store private notes by default; only write shared memory after a durable outcome is real\n- team_memory_promote: Copy one of your private notes into shared Nex memory when it becomes canonical\n- If shared memory points at another agent, ask them in the office for fresher working detail instead of guessing\n\n"
 	case config.MemoryBackendGBrain:
-		return "Memory scopes:\n- team_memory_query: Read your private notes (`scope=private`) or shared org memory backed by GBrain (`scope=shared`)\n- team_memory_write: Store private notes by default; only write shared memory after a durable outcome is real\n- team_memory_promote: Copy one of your private notes into shared GBrain memory when it becomes canonical\n\n"
+		return "Memory scopes:\n- team_memory_query: Read your private notes (`scope=private`) or shared org memory backed by GBrain (`scope=shared`)\n- team_memory_write: Store private notes by default; only write shared memory after a durable outcome is real\n- team_memory_promote: Copy one of your private notes into shared GBrain memory when it becomes canonical\n- If shared memory points at another agent, ask them in the office for fresher working detail instead of guessing\n\n"
 	default:
 		return "Memory scopes:\n- team_memory_query: Your private notes still work with `scope=private`\n- team_memory_write: Store private notes for yourself\n- Shared org memory is not active for this run, so `scope=shared` and team_memory_promote are unavailable\n\n"
 	}
@@ -468,9 +473,9 @@ func directMemoryStorageRule() string {
 func leadMemoryPromptBlock() string {
 	switch activeMemoryBackendKind() {
 	case config.MemoryBackendNex:
-		return "Memory scopes: use team_memory_query with scope=shared for org memory backed by Nex, scope=private for your own notes, and team_memory_promote when a private note becomes durable shared knowledge.\n\n"
+		return "Memory scopes: use team_memory_query with scope=shared for org memory backed by Nex, scope=private for your own notes, and team_memory_promote when a private note becomes durable shared knowledge. If shared memory points at another agent, ask them in the office for the freshest working context.\n\n"
 	case config.MemoryBackendGBrain:
-		return "Memory scopes: use team_memory_query with scope=shared for org memory backed by GBrain, scope=private for your own notes, and team_memory_promote when a private note becomes durable shared knowledge. Keep task coordination in the office, not in shared memory.\n\n"
+		return "Memory scopes: use team_memory_query with scope=shared for org memory backed by GBrain, scope=private for your own notes, and team_memory_promote when a private note becomes durable shared knowledge. If shared memory points at another agent, ask them in the office for the freshest working context. Keep task coordination in the office, not in shared memory.\n\n"
 	default:
 		return "Shared org memory is not active for this run. You can still use private notes with team_memory_query/team_memory_write scope=private.\n\n"
 	}
@@ -512,9 +517,9 @@ func leadMemoryFinalWarning() string {
 func specialistMemoryPromptBlock() string {
 	switch activeMemoryBackendKind() {
 	case config.MemoryBackendNex:
-		return "Memory scopes: use team_memory_query with scope=shared for org memory backed by Nex, scope=private for your own notes, and team_memory_promote when a private note becomes durable shared knowledge.\n\n"
+		return "Memory scopes: use team_memory_query with scope=shared for org memory backed by Nex, scope=private for your own notes, and team_memory_promote when a private note becomes durable shared knowledge. If shared memory points at another agent, ask them in the office for the freshest working context.\n\n"
 	case config.MemoryBackendGBrain:
-		return "Memory scopes: use team_memory_query with scope=shared for org memory backed by GBrain, scope=private for your own notes, and team_memory_promote when a private note becomes durable shared knowledge.\n\n"
+		return "Memory scopes: use team_memory_query with scope=shared for org memory backed by GBrain, scope=private for your own notes, and team_memory_promote when a private note becomes durable shared knowledge. If shared memory points at another agent, ask them in the office for the freshest working context.\n\n"
 	default:
 		return "Shared org memory is not active for this run. You can still use private notes with team_memory_query/team_memory_write scope=private.\n\n"
 	}
@@ -578,7 +583,7 @@ updated_at: %s
 Recorded by @%s on %s.
 
 %s
-`,
+	`,
 		yamlTitle,
 		slugify(actor),
 		slug,
@@ -588,4 +593,62 @@ Recorded by @%s on %s.
 		now,
 		strings.TrimSpace(note.Content),
 	)
+}
+
+func inferSharedMemoryOwner(identifier string, snippet string) string {
+	if owner := parseGBrainSharedMemoryOwner(identifier); owner != "" {
+		return owner
+	}
+	for _, marker := range []string{"author: @", "recorded by @"} {
+		if owner := parseSharedMemoryOwnerAfterMarker(snippet, marker); owner != "" {
+			return owner
+		}
+	}
+	return ""
+}
+
+func parseGBrainSharedMemoryOwner(identifier string) string {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return ""
+	}
+	parts := strings.Split(identifier, "--")
+	if len(parts) < 4 {
+		return ""
+	}
+	if strings.TrimSpace(parts[0]) != "wuphf-shared" {
+		return ""
+	}
+	return slugify(parts[1])
+}
+
+func parseSharedMemoryOwnerAfterMarker(text string, marker string) string {
+	text = strings.TrimSpace(text)
+	marker = strings.ToLower(strings.TrimSpace(marker))
+	if text == "" || marker == "" {
+		return ""
+	}
+	lower := strings.ToLower(text)
+	idx := strings.Index(lower, marker)
+	if idx < 0 {
+		return ""
+	}
+	start := idx + len(marker)
+	if start >= len(text) {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range text[start:] {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsNumber(r) || r == '-' || r == '_':
+			b.WriteRune(unicode.ToLower(r))
+		default:
+			value := slugify(b.String())
+			if value != "" {
+				return value
+			}
+			return ""
+		}
+	}
+	return slugify(b.String())
 }

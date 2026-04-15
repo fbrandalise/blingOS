@@ -428,12 +428,12 @@ func Run(ctx context.Context) error {
 
 		mcp.AddTool(server, readOnlyTool(
 			"team_memory_query",
-			"Query your private notes and, when configured, shared organizational memory.",
+			"Query your private notes and, when configured, shared organizational memory. Results may suggest which teammate to ask for fresher working context.",
 		), handleTeamMemoryQuery)
 
 		mcp.AddTool(server, officeWriteTool(
 			"team_memory_write",
-			"Store a private note by default, or write directly to shared durable memory when the result is real.",
+			"Store a private note by default, or write directly to shared durable memory when the result is real. Durable private notes may be flagged as promotion candidates.",
 		), handleTeamMemoryWrite)
 
 		mcp.AddTool(server, officeWriteTool(
@@ -479,11 +479,11 @@ func Run(ctx context.Context) error {
 		), handleHumanInterview)
 		mcp.AddTool(server, readOnlyTool(
 			"team_memory_query",
-			"Query your private notes and, when configured, shared organizational memory.",
+			"Query your private notes and, when configured, shared organizational memory. Results may suggest which teammate to ask for fresher working context.",
 		), handleTeamMemoryQuery)
 		mcp.AddTool(server, officeWriteTool(
 			"team_memory_write",
-			"Store a private note by default, or write directly to shared durable memory when the result is real.",
+			"Store a private note by default, or write directly to shared durable memory when the result is real. Durable private notes may be flagged as promotion candidates.",
 		), handleTeamMemoryWrite)
 		mcp.AddTool(server, officeWriteTool(
 			"team_memory_promote",
@@ -586,12 +586,12 @@ func Run(ctx context.Context) error {
 
 	mcp.AddTool(server, readOnlyTool(
 		"team_memory_query",
-		"Query your private notes and, when configured, shared organizational memory.",
+		"Query your private notes and, when configured, shared organizational memory. Results may suggest which teammate to ask for fresher working context.",
 	), handleTeamMemoryQuery)
 
 	mcp.AddTool(server, officeWriteTool(
 		"team_memory_write",
-		"Store a private note by default, or write directly to shared durable memory when the result is real.",
+		"Store a private note by default, or write directly to shared durable memory when the result is real. Durable private notes may be flagged as promotion candidates.",
 	), handleTeamMemoryWrite)
 
 	mcp.AddTool(server, officeWriteTool(
@@ -1527,6 +1527,8 @@ func handleTeamMemoryQuery(ctx context.Context, _ *mcp.CallToolRequest, args Tea
 	}
 
 	lines := []string{}
+	privateEntries := []brokerMemoryNote{}
+	sharedHits := []team.ScopedMemoryHit{}
 	if scope == "auto" || scope == "private" {
 		values := url.Values{}
 		values.Set("namespace", privateMemoryNamespace(mySlug))
@@ -1536,6 +1538,7 @@ func handleTeamMemoryQuery(ctx context.Context, _ *mcp.CallToolRequest, args Tea
 		if err := brokerGetJSON(ctx, "/memory?"+values.Encode(), &result); err != nil {
 			return toolError(err), nil, nil
 		}
+		privateEntries = append(privateEntries, result.Entries...)
 		if len(result.Entries) > 0 {
 			lines = append(lines, "Private memory:")
 			for _, entry := range result.Entries {
@@ -1552,6 +1555,7 @@ func handleTeamMemoryQuery(ctx context.Context, _ *mcp.CallToolRequest, args Tea
 		if err != nil {
 			return toolError(err), nil, nil
 		}
+		sharedHits = append(sharedHits, hits...)
 		if len(hits) > 0 {
 			header := "Shared memory:"
 			if scope == "shared" {
@@ -1567,6 +1571,19 @@ func handleTeamMemoryQuery(ctx context.Context, _ *mcp.CallToolRequest, args Tea
 	}
 	if len(lines) == 0 {
 		lines = append(lines, "No memory hits.")
+	}
+	if hints := promotionHintsForNotes(privateEntries); len(hints) > 0 {
+		lines = append(lines, "", "Promotion hints:")
+		lines = append(lines, hints...)
+	}
+	if len(sharedHits) > 0 {
+		var office brokerOfficeMembersResponse
+		if err := brokerGetJSON(ctx, "/office-members", &office); err == nil {
+			if hints := sharedMemoryRoutingHints(mySlug, sharedHits, office); len(hints) > 0 {
+				lines = append(lines, "", "Routing hints:")
+				lines = append(lines, hints...)
+			}
+		}
 	}
 	return textResult(strings.Join(lines, "\n")), nil, nil
 }
@@ -1610,7 +1627,16 @@ func handleTeamMemoryWrite(ctx context.Context, _ *mcp.CallToolRequest, args Tea
 	}, nil); err != nil {
 		return toolError(err), nil, nil
 	}
-	return textResult(fmt.Sprintf("Saved private note %s.", key)), nil, nil
+	lines := []string{fmt.Sprintf("Saved private note %s.", key)}
+	if hints := promotionHintsForNotes([]brokerMemoryNote{{
+		Key:     key,
+		Title:   title,
+		Content: content,
+		Author:  mySlug,
+	}}); len(hints) > 0 {
+		lines = append(lines, hints...)
+	}
+	return textResult(strings.Join(lines, "\n")), nil, nil
 }
 
 func handleTeamMemoryPromote(ctx context.Context, _ *mcp.CallToolRequest, args TeamMemoryPromoteArgs) (*mcp.CallToolResult, any, error) {

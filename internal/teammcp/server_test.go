@@ -300,6 +300,37 @@ func TestHandleTeamMemoryWriteAndQueryPrivate(t *testing.T) {
 	}
 }
 
+func TestHandleTeamMemoryWriteHintsPromotionForDurableNote(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	b := team.NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("start broker: %v", err)
+	}
+	defer b.Stop()
+
+	t.Setenv("WUPHF_TEAM_BROKER_URL", "http://"+b.Addr())
+	t.Setenv("WUPHF_BROKER_TOKEN", b.Token())
+
+	result, _, err := handleTeamMemoryWrite(context.Background(), nil, TeamMemoryWriteArgs{
+		Key:        "launch-brief",
+		Title:      "Launch brief",
+		Content:    "Approved final launch positioning for Customer Alpha. This is the canonical story for the rollout.",
+		Visibility: "private",
+		MySlug:     "pm",
+	})
+	if err != nil {
+		t.Fatalf("handleTeamMemoryWrite: %v", err)
+	}
+	text := textFromResult(t, result)
+	if !strings.Contains(text, "Saved private note launch-brief.") {
+		t.Fatalf("expected save confirmation, got %q", text)
+	}
+	if !strings.Contains(text, "team_memory_promote key=launch-brief") {
+		t.Fatalf("expected promotion hint, got %q", text)
+	}
+}
+
 func TestHandleTeamMemoryQueryAutoIncludesSharedNexMemory(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("WUPHF_MEMORY_BACKEND", "nex")
@@ -424,6 +455,57 @@ func TestHandleTeamMemoryPromoteWritesSharedNexMemory(t *testing.T) {
 	}
 	if !strings.Contains(postedBody, "Launch brief") || !strings.Contains(postedBody, "Approved final launch positioning") {
 		t.Fatalf("expected promoted content in Nex write, got %q", postedBody)
+	}
+}
+
+func TestHandleTeamMemoryQuerySharedSuggestsRoutingHint(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("WUPHF_MEMORY_BACKEND", "nex")
+	t.Setenv("WUPHF_API_KEY", "nex-test-key")
+	t.Setenv("WUPHF_NO_NEX", "")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/developers/v1/context/ask":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"answer":"Author: @pm\nApproved final launch positioning for Customer Alpha."}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer apiServer.Close()
+	t.Setenv("WUPHF_DEV_URL", apiServer.URL)
+
+	binDir := t.TempDir()
+	nexMCP := filepath.Join(binDir, "nex-mcp")
+	if err := os.WriteFile(nexMCP, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("create fake nex-mcp: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	b := team.NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("start broker: %v", err)
+	}
+	defer b.Stop()
+
+	t.Setenv("WUPHF_TEAM_BROKER_URL", "http://"+b.Addr())
+	t.Setenv("WUPHF_BROKER_TOKEN", b.Token())
+
+	result, _, err := handleTeamMemoryQuery(context.Background(), nil, TeamMemoryQueryArgs{
+		Query:  "launch positioning",
+		Scope:  "shared",
+		MySlug: "fe",
+	})
+	if err != nil {
+		t.Fatalf("handleTeamMemoryQuery: %v", err)
+	}
+	text := textFromResult(t, result)
+	if !strings.Contains(text, "Shared Nex memory:") {
+		t.Fatalf("expected shared-memory section, got %q", text)
+	}
+	if !strings.Contains(text, "Routing hints:") || !strings.Contains(text, "@pm") {
+		t.Fatalf("expected routing hint toward @pm, got %q", text)
 	}
 }
 

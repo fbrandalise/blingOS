@@ -75,6 +75,8 @@ Agents use WUPHF-managed memory tools instead of talking to raw backend MCP tool
 - every agent can read shared memory
 - every agent can read and write only its own private memory
 - durable conclusions can be promoted from private memory into shared memory once they are real
+- shared memory can point agents at the teammate who last recorded durable context, so they know who to ask in-channel for fresher working detail
+- private notes that look like durable decisions, preferences, or playbooks get promotion hints, but nothing is promoted automatically
 
 Examples:
 
