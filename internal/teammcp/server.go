@@ -354,7 +354,15 @@ type TeamMemberArgs struct {
 	Expertise      []string `json:"expertise,omitempty" jsonschema:"Optional expertise list"`
 	Personality    string   `json:"personality,omitempty" jsonschema:"Optional short personality description"`
 	PermissionMode string   `json:"permission_mode,omitempty" jsonschema:"Optional Claude permission mode"`
-	MySlug         string   `json:"my_slug,omitempty" jsonschema:"Your agent slug. Defaults to WUPHF_AGENT_SLUG."`
+	// Per-agent provider selection. Empty Provider means the agent inherits the
+	// install-wide default runtime. Set Provider to pick a specific runtime and
+	// (optionally) model for this agent: one team can mix Claude, Codex, and
+	// OpenClaw agents, each on its own provider.
+	Provider         string `json:"provider,omitempty" jsonschema:"LLM runtime for this agent. One of: claude-code, codex, openclaw. Empty = install default."`
+	Model            string `json:"model,omitempty" jsonschema:"Model name passed to the runtime (e.g. claude-sonnet-4.6, gpt-5.4, openai-codex/gpt-5.4). Free-form; runtime validates."`
+	OpenclawSessionKey string `json:"openclaw_session_key,omitempty" jsonschema:"Optional: attach to an existing OpenClaw session key (e.g. after WUPHF reinstall). Leave empty to auto-create a new session."`
+	OpenclawAgentID    string `json:"openclaw_agent_id,omitempty" jsonschema:"Optional: OpenClaw agent config name (defaults to 'main')."`
+	MySlug             string `json:"my_slug,omitempty" jsonschema:"Your agent slug. Defaults to WUPHF_AGENT_SLUG."`
 }
 
 type TeamPlanArgs struct {
@@ -2088,7 +2096,7 @@ func handleTeamMember(ctx context.Context, _ *mcp.CallToolRequest, args TeamMemb
 	action := strings.ToLower(strings.TrimSpace(args.Action))
 	switch action {
 	case "create":
-		if err := brokerPostJSON(ctx, "/office-members", map[string]any{
+		body := map[string]any{
 			"action":          "create",
 			"slug":            slug,
 			"name":            strings.TrimSpace(args.Name),
@@ -2097,7 +2105,22 @@ func handleTeamMember(ctx context.Context, _ *mcp.CallToolRequest, args TeamMemb
 			"personality":     strings.TrimSpace(args.Personality),
 			"permission_mode": strings.TrimSpace(args.PermissionMode),
 			"created_by":      strings.TrimSpace(resolveSlugOptional(args.MySlug)),
-		}, nil); err != nil {
+		}
+		if pkind := strings.TrimSpace(args.Provider); pkind != "" || strings.TrimSpace(args.Model) != "" {
+			p := map[string]any{"kind": pkind, "model": strings.TrimSpace(args.Model)}
+			if pkind == "openclaw" {
+				oc := map[string]any{}
+				if v := strings.TrimSpace(args.OpenclawSessionKey); v != "" {
+					oc["session_key"] = v
+				}
+				if v := strings.TrimSpace(args.OpenclawAgentID); v != "" {
+					oc["agent_id"] = v
+				}
+				p["openclaw"] = oc
+			}
+			body["provider"] = p
+		}
+		if err := brokerPostJSON(ctx, "/office-members", body, nil); err != nil {
 			return toolError(err), nil, nil
 		}
 		if err := reconfigureOfficeSessionFn(); err != nil {

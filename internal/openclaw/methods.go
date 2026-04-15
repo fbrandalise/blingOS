@@ -76,6 +76,44 @@ func (c *Client) SessionsSend(ctx context.Context, key, message, idempotencyKey 
 	return &res, nil
 }
 
+// SessionsCreate asks the gateway to spin up a new persistent session bound
+// to the given OpenClaw agent config. Returns the session key the gateway
+// assigned (used for subsequent sessions.send / subscribe / end calls).
+//
+// label is a human-readable name shown in OpenClaw tools. It must be unique
+// within the gateway's running sessions — duplicate labels are rejected by
+// the daemon with "label already in use." Callers typically include a nonce.
+// agentID defaults to "main" when empty.
+func (c *Client) SessionsCreate(ctx context.Context, agentID, label string) (string, error) {
+	if agentID == "" {
+		agentID = "main"
+	}
+	raw, err := c.Call(ctx, "sessions.create", map[string]any{
+		"agentId": agentID,
+		"label":   label,
+	})
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", err
+	}
+	return out.Key, nil
+}
+
+// SessionsEnd terminates the session with the given key on the gateway side,
+// freeing gateway resources. Callers should fire this when removing a bridged
+// agent from the WUPHF office so orphaned sessions don't accumulate. Failures
+// here are best-effort: the WUPHF-side member removal should proceed even if
+// the gateway is unreachable.
+func (c *Client) SessionsEnd(ctx context.Context, key string) error {
+	_, err := c.Call(ctx, "sessions.end", map[string]any{"key": key})
+	return err
+}
+
 func (c *Client) SessionsMessagesSubscribe(ctx context.Context, key string) error {
 	_, err := c.Call(ctx, "sessions.messages.subscribe", map[string]any{"key": key})
 	return err

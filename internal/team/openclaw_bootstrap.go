@@ -6,6 +6,7 @@ import (
 
 	"github.com/nex-crm/wuphf/internal/config"
 	"github.com/nex-crm/wuphf/internal/openclaw"
+	"github.com/nex-crm/wuphf/internal/provider"
 )
 
 // openclawBootstrapDialer is an override hook for tests. When non-nil it is
@@ -23,8 +24,41 @@ func StartOpenclawBridgeFromConfig(ctx context.Context, broker *Broker) (*Opencl
 	if broker == nil {
 		return nil, fmt.Errorf("openclaw bootstrap: broker is required")
 	}
-	cfg, _ := config.Load()
-	if len(cfg.OpenclawBridges) == 0 {
+
+	// Migration: any legacy config.OpenclawBridges entries are converted into
+	// per-agent ProviderBindings on matching members. After this runs, the
+	// source of truth for bridged sessions is the office member roster.
+	legacy, _, err := config.MigrateOpenclawBridgesFromConfig()
+	if err != nil {
+		return nil, fmt.Errorf("openclaw migration: %w", err)
+	}
+	for _, bind := range legacy {
+		name := bind.DisplayName
+		if name == "" {
+			name = bind.Slug
+		}
+		if err := broker.EnsureBridgedMember(bind.Slug, name, "openclaw"); err != nil {
+			return nil, fmt.Errorf("migrate bridged member %q: %w", bind.Slug, err)
+		}
+		if err := broker.SetMemberProvider(bind.Slug, provider.ProviderBinding{
+			Kind:     provider.KindOpenclaw,
+			Openclaw: &provider.OpenclawProviderBinding{SessionKey: bind.SessionKey},
+		}); err != nil {
+			return nil, fmt.Errorf("attach provider to %q: %w", bind.Slug, err)
+		}
+	}
+
+	// Collect the current set of openclaw-bound members. If there are none,
+	// skip the bridge entirely — no dial, no goroutine, nothing.
+	type bridgedSlug struct{ Slug, SessionKey string }
+	var bridged []bridgedSlug
+	for _, m := range broker.OfficeMembers() {
+		if m.Provider.Kind != provider.KindOpenclaw || m.Provider.Openclaw == nil {
+			continue
+		}
+		bridged = append(bridged, bridgedSlug{Slug: m.Slug, SessionKey: m.Provider.Openclaw.SessionKey})
+	}
+	if len(bridged) == 0 {
 		return nil, nil
 	}
 
@@ -33,20 +67,13 @@ func StartOpenclawBridgeFromConfig(ctx context.Context, broker *Broker) (*Opencl
 		dialer = defaultOpenclawDialer
 	}
 
-	bridge := NewOpenclawBridgeWithDialer(broker, nil, dialer, cfg.OpenclawBridges)
-	// Register each bridged session as an office member before starting the
-	// supervise loop. Without this, bridged agents post messages into #general
-	// but don't appear in the sidebar or the @mention autocomplete, so users
-	// can't actually discover or talk to them.
-	for _, b := range cfg.OpenclawBridges {
-		name := b.DisplayName
-		if name == "" {
-			name = b.Slug
-		}
-		if err := broker.EnsureBridgedMember(b.Slug, name, "openclaw"); err != nil {
-			return nil, fmt.Errorf("register bridged member %q: %w", b.Slug, err)
-		}
+	// bindings slice is kept for bridge bookkeeping; AttachSlug seeds the
+	// runtime maps so live add/remove during a session works correctly.
+	bindings := make([]config.OpenclawBridgeBinding, 0, len(bridged))
+	for _, b := range bridged {
+		bindings = append(bindings, config.OpenclawBridgeBinding{Slug: b.Slug, SessionKey: b.SessionKey})
 	}
+	bridge := NewOpenclawBridgeWithDialer(broker, nil, dialer, bindings)
 	if err := bridge.Start(ctx); err != nil {
 		return nil, fmt.Errorf("openclaw bridge start: %w", err)
 	}

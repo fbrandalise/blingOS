@@ -13,13 +13,21 @@ import (
 )
 
 type fakeOCClient struct {
-	mu           sync.Mutex
-	sentKeys     []string
-	subscribed   []string
-	events       chan openclaw.ClientEvent
-	sendErr      error
-	nextSendErrs []error // drained FIFO if non-empty
-	closed       bool
+	mu             sync.Mutex
+	sentKeys       []string
+	subscribed     []string
+	unsubscribed   []string
+	createdAgents  []string // agentID values passed to SessionsCreate
+	createdLabels  []string
+	createNextKey  string // key returned by the next SessionsCreate call; auto-incremented if empty
+	createCounter  int
+	createErr      error
+	endedKeys      []string
+	endErr         error
+	events         chan openclaw.ClientEvent
+	sendErr        error
+	nextSendErrs   []error // drained FIFO if non-empty
+	closed         bool
 }
 
 func newFakeOC() *fakeOCClient {
@@ -55,7 +63,57 @@ func (f *fakeOCClient) SessionsMessagesSubscribe(ctx context.Context, key string
 }
 
 func (f *fakeOCClient) SessionsMessagesUnsubscribe(ctx context.Context, key string) error {
+	f.mu.Lock()
+	f.unsubscribed = append(f.unsubscribed, key)
+	f.mu.Unlock()
 	return nil
+}
+
+func (f *fakeOCClient) SessionsCreate(ctx context.Context, agentID, label string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.createErr != nil {
+		return "", f.createErr
+	}
+	f.createdAgents = append(f.createdAgents, agentID)
+	f.createdLabels = append(f.createdLabels, label)
+	if f.createNextKey != "" {
+		key := f.createNextKey
+		f.createNextKey = ""
+		return key, nil
+	}
+	f.createCounter++
+	return "fake-session-key-" + strconvItoa(f.createCounter), nil
+}
+
+func (f *fakeOCClient) SessionsEnd(ctx context.Context, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.endErr != nil {
+		return f.endErr
+	}
+	f.endedKeys = append(f.endedKeys, key)
+	return nil
+}
+
+// strconvItoa is a file-local helper so we don't need to import strconv here.
+func strconvItoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	digits := []byte{}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	for n > 0 {
+		digits = append([]byte{byte('0' + n%10)}, digits...)
+		n /= 10
+	}
+	if neg {
+		digits = append([]byte{'-'}, digits...)
+	}
+	return string(digits)
 }
 
 func (f *fakeOCClient) Events() <-chan openclaw.ClientEvent { return f.events }

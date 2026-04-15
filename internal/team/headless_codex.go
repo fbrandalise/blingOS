@@ -21,10 +21,29 @@ var (
 	headlessCodexCommandContext = exec.CommandContext
 	headlessCodexExecutablePath = os.Executable
 	headlessCodexRunTurn        = func(l *Launcher, ctx context.Context, slug, notification string, channel ...string) error {
-		if l != nil && !l.usesCodexRuntime() {
-			return l.runHeadlessClaudeTurn(ctx, slug, notification)
+		if l == nil {
+			return fmt.Errorf("headlessCodexRunTurn: nil launcher")
 		}
-		return l.runHeadlessCodexTurn(ctx, slug, notification)
+		// Per-agent dispatch: each office member picks its own runtime via
+		// ProviderBinding. Empty Kind falls back to the install-wide default
+		// (l.provider), which keeps existing installs running unchanged until
+		// users explicitly tag agents with providers.
+		kind := l.memberEffectiveProviderKind(slug)
+		switch kind {
+		case provider.KindOpenclaw:
+			// Openclaw agents are routed via routeOpenclawMentionsLoop → bridge
+			// BEFORE the headless queue. If a message ever reaches this path
+			// for an openclaw agent (misrouted enqueue, legacy code), skip
+			// running a local subprocess so we don't double-post the reply.
+			appendHeadlessCodexLog(slug, "skip: openclaw agent routed via bridge, not headless runner")
+			return nil
+		case provider.KindCodex:
+			return l.runHeadlessCodexTurn(ctx, slug, notification)
+		case provider.KindClaudeCode:
+			return l.runHeadlessClaudeTurn(ctx, slug, notification)
+		default:
+			return fmt.Errorf("unknown provider kind %q for agent %q", kind, slug)
+		}
 	}
 	// headlessWakeLeadFn is nil in production; override in tests to intercept lead wake-ups.
 	headlessWakeLeadFn func(l *Launcher, specialistSlug string)

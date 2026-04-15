@@ -1539,6 +1539,38 @@ func (l *Launcher) usesCodexRuntime() bool {
 	return strings.EqualFold(strings.TrimSpace(l.provider), "codex")
 }
 
+// memberEffectiveProviderKind returns the provider kind that should run the
+// given agent's next turn. Lookup order: member's per-agent ProviderBinding
+// (set via /agent create --provider=X or the hire-agent modal), then the
+// install-wide l.provider fallback. This is what makes Opus-for-PM and
+// Codex-for-Eng coexist in one team.
+func (l *Launcher) memberEffectiveProviderKind(slug string) string {
+	if l.broker != nil {
+		if kind := l.broker.MemberProviderKind(slug); kind != "" {
+			return normalizeProviderKind(kind)
+		}
+	}
+	return normalizeProviderKind(l.provider)
+}
+
+// normalizeProviderKind lowercases + trims a provider string and maps the
+// legacy "claude" alias (what some callers pass instead of "claude-code") to
+// its canonical form. Unknown values pass through for the dispatch switch to
+// surface explicit errors.
+func normalizeProviderKind(raw string) string {
+	k := strings.ToLower(strings.TrimSpace(raw))
+	switch k {
+	case "claude", "":
+		return provider.KindClaudeCode
+	case "codex":
+		return provider.KindCodex
+	case "claude-code", "openclaw":
+		return k
+	default:
+		return k
+	}
+}
+
 func (l *Launcher) UsesTmuxRuntime() bool {
 	return !l.usesCodexRuntime()
 }
@@ -3265,6 +3297,10 @@ func (l *Launcher) startOpenclawBridge() {
 		return // no bindings configured; opt-in integration stays off
 	}
 	l.openclawBridge = bridge
+	// Attach the bridge to the broker so live /office-members mutations
+	// (hire/fire/switch) can drive gateway subscribe/create/end calls. Without
+	// this, new openclaw members added after startup would never subscribe.
+	l.broker.AttachOpenclawBridge(bridge)
 	go routeOpenclawMentionsLoop(ctx, l.broker, bridge)
 }
 
