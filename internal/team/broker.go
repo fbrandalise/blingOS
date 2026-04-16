@@ -5833,7 +5833,8 @@ func (b *Broker) handleChannelMembers(w http.ResponseWriter, r *http.Request) {
 		ch := b.findChannelLocked(channel)
 		if ch == nil {
 			b.mu.Unlock()
-			http.Error(w, "channel not found", http.StatusNotFound)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"channel": channel, "members": []map[string]any{}})
 			return
 		}
 		memberInfo := make([]map[string]any, 0, len(ch.Members))

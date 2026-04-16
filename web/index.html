@@ -5246,7 +5246,8 @@ function showOffice() {
               checked: true,
               type: m.type || 'specialist',
               expertise: m.expertise || [],
-              personality: m.personality || ''
+              personality: m.personality || '',
+              builtIn: !!m.built_in
             };
           });
         }
@@ -7977,9 +7978,14 @@ function removeThreadState(container) {
 }
 
 function setThreadReplyCount(parentId, count) {
+  var wasExpanded = !!inlineExpandedThreads[parentId];
   if (count > 0) threadReplyCounts[parentId] = count;
   else delete threadReplyCounts[parentId];
   updateThreadLink(parentId);
+  // Auto-expand inline thread when first gaining replies (expanded by default)
+  if (!wasExpanded && inlineExpandedThreads[parentId]) {
+    renderInlineThread(parentId);
+  }
   if (activeThreadId === parentId) {
     var replyCount = document.getElementById('thread-reply-count');
     if (replyCount) replyCount.textContent = threadRepliesLabel(count);
@@ -8522,12 +8528,15 @@ function appendMessageToContainer(msg, container, opts) {
 }
 
 var inlineExpandedThreads = {};
+var inlineCollapsedThreads = {};
 
 function updateThreadLink(parentId) {
   var controls = document.getElementById(threadControlsId(parentId));
   if (!controls) return;
   var count = threadReplyCounts[parentId] || 0;
-  var inlineExpanded = !!inlineExpandedThreads[parentId];
+  // Threads with replies are expanded by default unless explicitly collapsed
+  var inlineExpanded = count > 0 && !inlineCollapsedThreads[parentId];
+  if (inlineExpanded) inlineExpandedThreads[parentId] = true;
   var panelOpen = activeThreadId === parentId && isThreadPanelOpen();
 
   controls.textContent = '';
@@ -8565,12 +8574,14 @@ function toggleInlineThread(parentId) {
 
   if (inlineExpandedThreads[parentId]) {
     inlineExpandedThreads[parentId] = false;
+    inlineCollapsedThreads[parentId] = true;
     inlineContainer.hidden = true;
     updateThreadLink(parentId);
     return;
   }
 
   inlineExpandedThreads[parentId] = true;
+  delete inlineCollapsedThreads[parentId];
   updateThreadLink(parentId);
   renderInlineThread(parentId);
 }
@@ -8748,7 +8759,8 @@ function refreshOfficeSidebar() {
           checked: true,
           type: m.type || 'specialist',
           expertise: m.expertise || [],
-          personality: m.personality || ''
+          personality: m.personality || '',
+          builtIn: !!m.built_in
         };
       });
     }
@@ -9834,6 +9846,27 @@ function openAgentPanel(slug) {
   editBtn.textContent = 'Edit agent';
   editBtn.addEventListener('click', function() { closeAgentPanel(); openAgentWizard(agent); });
   actionsSection.appendChild(editBtn);
+
+  if (!agent.builtIn && agent.slug !== 'ceo') {
+    var removeBtn = document.createElement('button');
+    removeBtn.className = 'btn btn-ghost btn-sm';
+    removeBtn.style.width = '100%';
+    removeBtn.style.marginBottom = '8px';
+    removeBtn.style.color = 'var(--red, #dc2626)';
+    removeBtn.textContent = 'Remove agent';
+    removeBtn.addEventListener('click', function() {
+      if (!confirm('Remove ' + agent.name + '? This cannot be undone.')) return;
+      WuphfAPI.post('/office-members', { action: 'remove', slug: agent.slug })
+        .then(function() {
+          closeAgentPanel();
+          AGENTS = AGENTS.filter(function(a) { return a.slug !== agent.slug; });
+          renderSidebarAgents();
+          showNotice(agent.name + ' removed', 'success');
+        })
+        .catch(function(e) { showNotice('Remove failed: ' + (e.message || e), 'error'); });
+    });
+    actionsSection.appendChild(removeBtn);
+  }
 
   body.appendChild(avatar);
   body.appendChild(nameEl);
@@ -11723,6 +11756,12 @@ function onDMChannelEnter(slug) {
   // Move composer + typing into split left pane
   if (splitLeft && composer) splitLeft.appendChild(typing);
   if (splitLeft && composer) splitLeft.appendChild(composer);
+  // Restore stream pane state — expanded by default
+  var streamLines = document.getElementById('dm-stream-lines');
+  var collapseIcon = document.getElementById('dm-stream-collapse-icon');
+  var wasCollapsed = localStorage.getItem('wuphf-stream-pane-collapsed') === 'true';
+  if (streamLines) streamLines.style.display = wasCollapsed ? 'none' : '';
+  if (collapseIcon) collapseIcon.textContent = wasCollapsed ? '\u25B8' : '\u25BE';
   connectAgentStream(slug);
   renderSidebarAgents();
 }
