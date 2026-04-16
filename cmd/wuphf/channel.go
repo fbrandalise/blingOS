@@ -152,19 +152,28 @@ type brokerReaction struct {
 	From  string `json:"from"`
 }
 
+type brokerMessageUsage struct {
+	InputTokens         int `json:"input_tokens,omitempty"`
+	OutputTokens        int `json:"output_tokens,omitempty"`
+	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
+	TotalTokens         int `json:"total_tokens,omitempty"`
+}
+
 type brokerMessage struct {
-	ID          string           `json:"id"`
-	From        string           `json:"from"`
-	Kind        string           `json:"kind,omitempty"`
-	Source      string           `json:"source,omitempty"`
-	SourceLabel string           `json:"source_label,omitempty"`
-	EventID     string           `json:"event_id,omitempty"`
-	Title       string           `json:"title,omitempty"`
-	Content     string           `json:"content"`
-	Tagged      []string         `json:"tagged"`
-	ReplyTo     string           `json:"reply_to"`
-	Timestamp   string           `json:"timestamp"`
-	Reactions   []brokerReaction `json:"reactions,omitempty"`
+	ID          string              `json:"id"`
+	From        string              `json:"from"`
+	Kind        string              `json:"kind,omitempty"`
+	Source      string              `json:"source,omitempty"`
+	SourceLabel string              `json:"source_label,omitempty"`
+	EventID     string              `json:"event_id,omitempty"`
+	Title       string              `json:"title,omitempty"`
+	Content     string              `json:"content"`
+	Tagged      []string            `json:"tagged"`
+	ReplyTo     string              `json:"reply_to"`
+	Timestamp   string              `json:"timestamp"`
+	Usage       *brokerMessageUsage `json:"usage,omitempty"`
+	Reactions   []brokerReaction    `json:"reactions,omitempty"`
 }
 
 type channelMember struct {
@@ -392,6 +401,24 @@ type telegramConnectDoneMsg struct {
 	err         error
 }
 
+// openclawSessionOption is the minimal session data we retain for the picker.
+type openclawSessionOption struct {
+	SessionKey string
+	Label      string
+	Preview    string
+}
+
+type openclawSessionsMsg struct {
+	sessions []openclawSessionOption
+	err      error
+}
+
+type openclawConnectDoneMsg struct {
+	slug  string
+	label string
+	err   error
+}
+
 type channelTaskMutationDoneMsg struct {
 	notice string
 	err    error
@@ -424,7 +451,7 @@ var channelSlashCommands = []tui.SlashCommand{
 	{Name: "provider", Description: "Switch LLM provider (choose wisely, Michael)", Category: "setup"},
 	{Name: "doctor", Description: "Check readiness and runtime health (Meredith not involved)", Category: "setup"},
 	{Name: "integrate", Description: "Connect an integration (beat the Dunder Mifflin fax)", Category: "setup"},
-	{Name: "connect", Description: "Connect Telegram, Slack, or Discord to the office", Category: "setup"},
+	{Name: "connect", Description: "Bring Telegram, OpenClaw, or other integrations into the office", Category: "setup"},
 	{Name: "1o1", Description: "Direct 1:1 with an agent — Toby not invited", Category: "session"},
 	{Name: "messages", Description: "Show the main office feed — where it all happens", Category: "navigate"},
 	{Name: "inbox", Description: "Show the selected agent inbox lane in 1:1 mode", Category: "navigate"},
@@ -495,6 +522,7 @@ const (
 	channelPickerNone           channelPickerMode = ""
 	channelPickerInitProvider   channelPickerMode = "init_provider"
 	channelPickerInitBlueprint  channelPickerMode = "init_blueprint"
+	channelPickerInitPack       channelPickerMode = "init_pack" // legacy alias
 	channelPickerProvider       channelPickerMode = "provider"
 	channelPickerIntegrations   channelPickerMode = "integrations"
 	channelPickerRequests       channelPickerMode = "requests"
@@ -516,6 +544,9 @@ const (
 	channelPickerConnect        channelPickerMode = "connect"
 	channelPickerTelegramToken  channelPickerMode = "telegram_token"
 	channelPickerTelegramChatID channelPickerMode = "telegram_chat_id"
+	channelPickerOpenclawURL     channelPickerMode = "openclaw-url"
+	channelPickerOpenclawToken   channelPickerMode = "openclaw-token"
+	channelPickerOpenclawSession channelPickerMode = "openclaw-session"
 )
 
 type officeApp string
@@ -645,6 +676,11 @@ type channelModel struct {
 	telegramGroups []team.TelegramGroup
 	telegramToken  string
 
+	// OpenClaw connect flow state
+	openclawURL      string
+	openclawToken    string
+	openclawSessions []openclawSessionOption
+
 	// lastAgentContent tracks the latest streaming text per agent for sidebar display.
 	lastAgentContent map[string]string
 
@@ -697,11 +733,21 @@ func newChannelModelWithApp(threadsCollapsed bool, initialApp officeApp) channel
 		m.autocomplete = tui.NewAutocomplete(buildOneOnOneSlashCommands())
 		m.notice = "Conference room reserved. Direct session reset. Agent pane reloaded in place. No Toby."
 	}
-	if config.ResolveNoNex() {
-		m.notice = "Running in office-only mode. Nex tools are disabled for this session."
-	} else if config.ResolveAPIKey("") == "" {
+	memoryStatus := team.ResolveMemoryBackendStatus()
+	if memoryStatus.SelectedKind == config.MemoryBackendNone {
+		if config.ResolveNoNex() {
+			m.notice = "Running in office-only mode. Nex tools are disabled for this session."
+		} else {
+			m.notice = "Running without an external memory backend for this session."
+		}
+	} else if memoryStatus.SelectedKind == config.MemoryBackendNex && memoryStatus.ActiveKind == config.MemoryBackendNone && strings.TrimSpace(config.ResolveAPIKey("")) == "" {
 		m.notice = "No WUPHF API key configured. Starting setup..."
 		m.initFlow, _ = m.initFlow.Start()
+	} else if memoryStatus.SelectedKind == config.MemoryBackendGBrain && strings.TrimSpace(config.ResolveOpenAIAPIKey()) == "" && strings.TrimSpace(config.ResolveAnthropicAPIKey()) == "" {
+		m.notice = "No OpenAI or Anthropic API key configured for GBrain. Starting setup..."
+		m.initFlow, _ = m.initFlow.Start()
+	} else if memoryStatus.SelectedKind == config.MemoryBackendGBrain && memoryStatus.ActiveKind == config.MemoryBackendNone && strings.TrimSpace(memoryStatus.Detail) != "" {
+		m.notice = memoryStatus.Detail
 	}
 	m.syncSidebarCursorToActive()
 	return m
@@ -1579,6 +1625,51 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pickerMode = channelPickerTelegramGroup
 		return m, nil
 
+	case openclawSessionsMsg:
+		m.posting = false
+		if msg.err != nil {
+			options := []tui.PickerOption{
+				{Label: "Retry with different gateway URL", Value: "retry-url", Description: "Go back and change the URL/token"},
+			}
+			m.picker = tui.NewPicker(fmt.Sprintf("OpenClaw dial failed: %s", msg.err.Error()), options)
+			m.picker.SetActive(true)
+			m.pickerMode = channelPickerOpenclawSession
+			m.notice = "OpenClaw connect failed: " + msg.err.Error()
+			return m, nil
+		}
+		m.openclawSessions = msg.sessions
+		if len(msg.sessions) == 0 {
+			m.notice = "OpenClaw gateway returned no sessions. Start one in OpenClaw and retry /connect openclaw."
+			return m, nil
+		}
+		options := make([]tui.PickerOption, 0, len(msg.sessions))
+		for _, s := range msg.sessions {
+			label := s.Label
+			if label == "" {
+				label = s.SessionKey
+			}
+			desc := s.Preview
+			options = append(options, tui.PickerOption{
+				Label:       label,
+				Value:       s.SessionKey,
+				Description: desc,
+			})
+		}
+		m.picker = tui.NewPicker("Pick an OpenClaw session to bridge:", options)
+		m.picker.SetActive(true)
+		m.pickerMode = channelPickerOpenclawSession
+		m.notice = fmt.Sprintf("Found %d OpenClaw session(s). Pick one to bridge.", len(msg.sessions))
+		return m, nil
+
+	case openclawConnectDoneMsg:
+		m.posting = false
+		if msg.err != nil {
+			m.notice = "OpenClaw connect failed: " + msg.err.Error()
+			return m, nil
+		}
+		m.notice = fmt.Sprintf("@%s is now in the office", msg.slug)
+		return m, nil
+
 	case telegramConnectDoneMsg:
 		m.posting = false
 		if msg.err != nil {
@@ -1945,6 +2036,9 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.Value {
 			case "telegram":
 				return m, m.startTelegramConnect()
+			case "openclaw":
+				m.startOpenclawConnect()
+				return m, nil
 			default:
 				m.notice = msg.Label + " is not available yet."
 				return m, nil
@@ -2022,6 +2116,54 @@ func (m channelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.posting = true
 			m.notice = fmt.Sprintf("Connecting \"%s\"...", selected.Title)
 			return m, connectTelegramGroup(m.telegramToken, *selected)
+		case channelPickerOpenclawURL:
+			m.picker.SetActive(false)
+			m.pickerMode = channelPickerNone
+			url := strings.TrimSpace(msg.Value)
+			if url == "" {
+				url = "ws://127.0.0.1:18789"
+			}
+			m.openclawURL = url
+			m.promptOpenclawToken()
+			return m, nil
+		case channelPickerOpenclawToken:
+			m.picker.SetActive(false)
+			m.pickerMode = channelPickerNone
+			token := strings.TrimSpace(msg.Value)
+			if token == "" {
+				m.notice = "OpenClaw connection canceled."
+				return m, nil
+			}
+			m.openclawToken = token
+			m.posting = true
+			m.notice = "Dialing OpenClaw gateway..."
+			return m, fetchOpenclawSessions(m.openclawURL, m.openclawToken)
+		case channelPickerOpenclawSession:
+			m.picker.SetActive(false)
+			m.pickerMode = channelPickerNone
+			key := strings.TrimSpace(msg.Value)
+			if key == "" {
+				m.notice = "OpenClaw connection canceled."
+				return m, nil
+			}
+			if key == "retry-url" {
+				m.promptOpenclawURL()
+				return m, nil
+			}
+			var selected *openclawSessionOption
+			for i := range m.openclawSessions {
+				if m.openclawSessions[i].SessionKey == key {
+					selected = &m.openclawSessions[i]
+					break
+				}
+			}
+			if selected == nil {
+				m.notice = "Unknown OpenClaw session selection."
+				return m, nil
+			}
+			m.posting = true
+			m.notice = fmt.Sprintf("Bridging \"%s\"...", selected.Label)
+			return m, connectOpenclawSession(m.openclawURL, m.openclawToken, *selected)
 		case channelPickerTasks:
 			m.picker.SetActive(false)
 			m.pickerMode = channelPickerNone
@@ -4682,8 +4824,13 @@ func (m channelModel) runCommand(trimmed, threadTarget string) (tea.Model, tea.C
 		return m, createDMChannel(slug)
 	case trimmed == "/integrate":
 		clearCurrent()
+		memoryStatus := team.ResolveMemoryBackendStatus()
+		if memoryStatus.SelectedKind != config.MemoryBackendNex {
+			m.notice = "Managed integrations are Nex-only right now. Select the Nex memory backend to use /integrate."
+			return m, nil
+		}
 		if config.ResolveNoNex() {
-			m.notice = "Nex is disabled (--no-nex). Running on local memory — like Creed, but better organized."
+			m.notice = "Nex is disabled (--no-nex), so managed integrations are unavailable for this run."
 			return m, nil
 		}
 		if config.ResolveAPIKey("") == "" {
@@ -4704,6 +4851,7 @@ func (m channelModel) runCommand(trimmed, threadTarget string) (tea.Model, tea.C
 		clearCurrent()
 		m.picker = tui.NewPicker("Connect a channel", []tui.PickerOption{
 			{Label: "Telegram", Value: "telegram", Description: "Connect a Telegram group as a shared office channel"},
+			{Label: "OpenClaw", Value: "openclaw", Description: "Bridge an OpenClaw session into the office"},
 			{Label: "Slack (coming soon)", Value: "slack", Description: "Connect a Slack workspace channel"},
 			{Label: "Discord (coming soon)", Value: "discord", Description: "Connect a Discord server channel"},
 		})
@@ -4713,6 +4861,10 @@ func (m channelModel) runCommand(trimmed, threadTarget string) (tea.Model, tea.C
 	case trimmed == "/connect telegram":
 		clearCurrent()
 		return m, m.startTelegramConnect()
+	case trimmed == "/connect openclaw":
+		clearCurrent()
+		m.startOpenclawConnect()
+		return m, nil
 	case trimmed == "/switch" || trimmed == "/s":
 		clearCurrent()
 		options := m.buildSwitchChannelPickerOptions()
@@ -4982,10 +5134,6 @@ func (m channelModel) runCommand(trimmed, threadTarget string) (tea.Model, tea.C
 		return m, mutateChannelMember(m.activeChannel, parts[1], parts[2])
 	case trimmed == "/init":
 		clearCurrent()
-		if config.ResolveNoNex() {
-			m.notice = "Nex is disabled (--no-nex). Ryan Howard did not let integration issues stop him. But he also failed. Restart without --no-nex to run setup."
-			return m, nil
-		}
 		m.notice = "Starting setup..."
 		var cmd tea.Cmd
 		m.initFlow, cmd = m.initFlow.Start()

@@ -1303,6 +1303,51 @@ func TestNewChannelModelAutoStartsInitWithoutAPIKey(t *testing.T) {
 	}
 }
 
+func TestNewChannelModelAutoStartsInitForGBrainWithoutProviderKey(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("WUPHF_MEMORY_BACKEND", config.MemoryBackendGBrain)
+	t.Setenv("WUPHF_OPENAI_API_KEY", "")
+	t.Setenv("WUPHF_ANTHROPIC_API_KEY", "")
+	defer os.Setenv("HOME", origHome)
+
+	m := newChannelModel(false)
+
+	if !m.initFlow.IsActive() && m.initFlow.Phase() != tui.InitAPIKey {
+		t.Fatalf("expected init flow to auto-start for missing gbrain credentials, got phase %q", m.initFlow.Phase())
+	}
+	if !strings.Contains(m.notice, "GBrain") || !strings.Contains(m.notice, "Starting setup") {
+		t.Fatalf("expected GBrain setup notice, got %q", m.notice)
+	}
+}
+
+func TestInitCommandRunsForGBrainBackend(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("WUPHF_MEMORY_BACKEND", config.MemoryBackendGBrain)
+	t.Setenv("WUPHF_API_KEY", "")
+	defer os.Setenv("HOME", origHome)
+
+	m := newChannelModel(false)
+	m.initFlow = tui.NewInitFlow()
+	m.notice = ""
+	m.input = []rune("/init")
+	m.inputPos = len(m.input)
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got := next.(channelModel)
+
+	if !strings.Contains(got.notice, "Starting setup...") {
+		t.Fatalf("expected setup notice, got %q", got.notice)
+	}
+	if cmd == nil && got.initFlow.Phase() == tui.InitIdle {
+		t.Fatalf("expected /init to activate setup, got phase %q", got.initFlow.Phase())
+	}
+	if got.initFlow.Phase() != tui.InitAPIKey {
+		t.Fatalf("expected gbrain setup to ask for a provider key, got %q", got.initFlow.Phase())
+	}
+}
+
 func TestSlashAutocompleteShowsAllCommandsOnSlash(t *testing.T) {
 	m := newChannelModel(false)
 	m.input = []rune("/")
@@ -2462,6 +2507,26 @@ func TestChannelViewShowsMessageIDInMeta(t *testing.T) {
 	}
 }
 
+func TestChannelViewShowsPerMessageTokenUsage(t *testing.T) {
+	m := newChannelModel(false)
+	m.width = 120
+	m.height = 30
+	m.messages = []brokerMessage{
+		{
+			ID:        "msg-token-1",
+			From:      "ceo",
+			Content:   "We should choose a sharper wedge.",
+			Timestamp: "2026-03-24T10:00:00Z",
+			Usage:     &brokerMessageUsage{TotalTokens: 1234},
+		},
+	}
+
+	view := stripANSI(m.View())
+	if !strings.Contains(view, "1.2k tok") {
+		t.Fatalf("expected per-message token usage in view, got %q", view)
+	}
+}
+
 func TestChannelViewShowsUsageTotals(t *testing.T) {
 	m := newChannelModel(false)
 	m.width = 120
@@ -2679,6 +2744,49 @@ func TestBlockingRequestCannotBeSnoozedByCommand(t *testing.T) {
 	}
 	if !strings.Contains(got.notice, "cannot be snoozed") {
 		t.Fatalf("expected cannot-be-snoozed notice, got %q", got.notice)
+	}
+}
+
+func TestConnectOpenclawOpensPicker(t *testing.T) {
+	m := newChannelModel(false)
+
+	next, _ := m.runCommand("/connect openclaw", "")
+	got := next.(channelModel)
+
+	if !got.picker.IsActive() {
+		t.Fatal("expected picker active after /connect openclaw")
+	}
+	if string(got.pickerMode) != "openclaw-url" {
+		t.Fatalf("expected picker mode openclaw-url, got %q", got.pickerMode)
+	}
+	view := stripANSI(got.picker.View())
+	if !strings.Contains(view, "Gateway URL") {
+		t.Fatalf("picker should prompt for Gateway URL: %q", view)
+	}
+}
+
+func TestConnectOpenclawChainsFromURLToToken(t *testing.T) {
+	m := newChannelModel(false)
+
+	next, _ := m.runCommand("/connect openclaw", "")
+	got := next.(channelModel)
+
+	// Submit URL (empty → default)
+	next2, _ := got.Update(tui.PickerSelectMsg{Value: "", Label: ""})
+	got2 := next2.(channelModel)
+
+	if !got2.picker.IsActive() {
+		t.Fatal("expected picker still active after URL submit")
+	}
+	if string(got2.pickerMode) != "openclaw-token" {
+		t.Fatalf("expected picker mode openclaw-token, got %q", got2.pickerMode)
+	}
+	if got2.openclawURL != "ws://127.0.0.1:18789" {
+		t.Fatalf("expected default URL, got %q", got2.openclawURL)
+	}
+	view := stripANSI(got2.picker.View())
+	if !strings.Contains(view, "Shared secret") {
+		t.Fatalf("picker should prompt for Shared secret: %q", view)
 	}
 }
 

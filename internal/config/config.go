@@ -28,19 +28,20 @@ func RuntimeHomeDir() string {
 
 // Config mirrors ~/.wuphf/config.json.
 type Config struct {
-	APIKey          string `json:"api_key,omitempty"`
-	OneAPIKey       string `json:"one_api_key,omitempty"`
-	ComposioAPIKey  string `json:"composio_api_key,omitempty"`
-	ActionProvider  string `json:"action_provider,omitempty"`
-	Email           string `json:"email,omitempty"`
-	WorkspaceID     string `json:"workspace_id,omitempty"`
-	WorkspaceSlug   string `json:"workspace_slug,omitempty"`
-	LLMProvider     string `json:"llm_provider,omitempty"`
-	GeminiAPIKey    string `json:"gemini_api_key,omitempty"`
-	AnthropicAPIKey string `json:"anthropic_api_key,omitempty"`
-	OpenAIAPIKey    string `json:"openai_api_key,omitempty"`
-	MinimaxAPIKey   string `json:"minimax_api_key,omitempty"`
-	Blueprint       string `json:"blueprint,omitempty"`
+	APIKey              string `json:"api_key,omitempty"`
+	MemoryBackend       string `json:"memory_backend,omitempty"`
+	OneAPIKey           string `json:"one_api_key,omitempty"`
+	ComposioAPIKey      string `json:"composio_api_key,omitempty"`
+	ActionProvider      string `json:"action_provider,omitempty"`
+	Email               string `json:"email,omitempty"`
+	WorkspaceID         string `json:"workspace_id,omitempty"`
+	WorkspaceSlug       string `json:"workspace_slug,omitempty"`
+	LLMProvider         string `json:"llm_provider,omitempty"`
+	GeminiAPIKey        string `json:"gemini_api_key,omitempty"`
+	AnthropicAPIKey     string `json:"anthropic_api_key,omitempty"`
+	OpenAIAPIKey        string `json:"openai_api_key,omitempty"`
+	MinimaxAPIKey       string `json:"minimax_api_key,omitempty"`
+	Blueprint           string `json:"blueprint,omitempty"`
 	// Pack is retained as a legacy alias for the active operation blueprint/template.
 	Pack                string `json:"pack,omitempty"`
 	TeamLeadSlug        string `json:"team_lead_slug,omitempty"`
@@ -58,6 +59,23 @@ type Config struct {
 	CompanyGoals        string `json:"company_goals,omitempty"`
 	CompanySize         string `json:"company_size,omitempty"`
 	CompanyPriority     string `json:"company_priority,omitempty"`
+
+	OpenclawBridges    []OpenclawBridgeBinding `json:"openclaw_bridges,omitempty"`
+	OpenclawGatewayURL string                  `json:"openclaw_gateway_url,omitempty"`
+	OpenclawToken      string                  `json:"openclaw_token,omitempty"`
+}
+
+const (
+	MemoryBackendNone   = "none"
+	MemoryBackendNex    = "nex"
+	MemoryBackendGBrain = "gbrain"
+)
+
+// OpenclawBridgeBinding binds a WUPHF agent session to an OpenClaw bridge slug.
+type OpenclawBridgeBinding struct {
+	SessionKey  string `json:"session_key"`
+	Slug        string `json:"slug"`
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 // ActiveBlueprint returns the preferred operation blueprint/template id.
@@ -160,6 +178,62 @@ func ResolveNoNex() bool {
 		return false
 	}
 	return v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
+}
+
+// NormalizeMemoryBackend returns a supported memory backend or the empty string.
+func NormalizeMemoryBackend(value string) string {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case MemoryBackendNone:
+		return MemoryBackendNone
+	case MemoryBackendNex:
+		return MemoryBackendNex
+	case MemoryBackendGBrain:
+		return MemoryBackendGBrain
+	default:
+		return ""
+	}
+}
+
+// ResolveMemoryBackend resolves the active organizational memory backend.
+// Resolution: flag/env override > config file > default.
+//
+// Defaults:
+//   - `nex` when Nex is allowed for the run
+//   - `none` when --no-nex is set and no alternate backend was selected
+//
+// `--no-nex` always disables the Nex backend itself, but does not prevent an
+// alternate backend like GBrain from being selected.
+func ResolveMemoryBackend(flagValue string) string {
+	backend := NormalizeMemoryBackend(flagValue)
+	if backend == "" {
+		backend = NormalizeMemoryBackend(os.Getenv("WUPHF_MEMORY_BACKEND"))
+	}
+	if backend == "" {
+		cfg, _ := Load()
+		backend = NormalizeMemoryBackend(cfg.MemoryBackend)
+	}
+	if backend == "" {
+		if ResolveNoNex() {
+			return MemoryBackendNone
+		}
+		return MemoryBackendNex
+	}
+	if backend == MemoryBackendNex && ResolveNoNex() {
+		return MemoryBackendNone
+	}
+	return backend
+}
+
+// MemoryBackendLabel returns a short user-facing label for the backend.
+func MemoryBackendLabel(backend string) string {
+	switch NormalizeMemoryBackend(backend) {
+	case MemoryBackendNex:
+		return "Nex"
+	case MemoryBackendGBrain:
+		return "GBrain"
+	default:
+		return "Local-only"
+	}
 }
 
 // ResolveLLMProvider resolves the active LLM provider for this run.
@@ -612,4 +686,40 @@ func resolveTaskInterval(envKey, legacyEnvKey string, fromConfig func(Config) in
 		minutes = 2
 	}
 	return minutes
+}
+
+// ResolveOpenclawToken returns the OpenClaw gateway auth token from env > config.
+func ResolveOpenclawToken() string {
+	if v := strings.TrimSpace(os.Getenv("WUPHF_OPENCLAW_TOKEN")); v != "" {
+		return v
+	}
+	cfg, _ := Load()
+	return strings.TrimSpace(cfg.OpenclawToken)
+}
+
+// ResolveOpenclawGatewayURL returns the OpenClaw gateway URL from env > config > default loopback.
+func ResolveOpenclawGatewayURL() string {
+	if v := strings.TrimSpace(os.Getenv("WUPHF_OPENCLAW_GATEWAY_URL")); v != "" {
+		return v
+	}
+	cfg, _ := Load()
+	if v := strings.TrimSpace(cfg.OpenclawGatewayURL); v != "" {
+		return v
+	}
+	return "ws://127.0.0.1:18789"
+}
+
+// ResolveOpenclawIdentityPath returns where the Ed25519 device identity is
+// persisted. OpenClaw's gateway requires device-pair auth — token alone grants
+// zero scopes — so this keypair is effectively credentials: write only to a
+// user-scoped 0600 file under the WUPHF home.
+func ResolveOpenclawIdentityPath() string {
+	if v := strings.TrimSpace(os.Getenv("WUPHF_OPENCLAW_IDENTITY_PATH")); v != "" {
+		return v
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".wuphf", "openclaw", "identity.json")
+	}
+	return filepath.Join(home, ".wuphf", "openclaw", "identity.json")
 }

@@ -1677,6 +1677,35 @@ func (l *Launcher) usesCodexRuntime() bool {
 	return strings.EqualFold(strings.TrimSpace(l.provider), "codex")
 }
 
+// memberEffectiveProviderKind returns the provider kind that should run the
+// given agent's next turn. Lookup order: member's per-agent ProviderBinding
+// (set via /agent create --provider=X or the hire-agent modal), then the
+// install-wide l.provider fallback.
+func (l *Launcher) memberEffectiveProviderKind(slug string) string {
+	if l.broker != nil {
+		if kind := l.broker.MemberProviderKind(slug); kind != "" {
+			return normalizeProviderKind(kind)
+		}
+	}
+	return normalizeProviderKind(l.provider)
+}
+
+// normalizeProviderKind trims and canonicalizes provider kinds while
+// preserving unknown values so dispatch code can surface explicit errors.
+func normalizeProviderKind(raw string) string {
+	k := strings.ToLower(strings.TrimSpace(raw))
+	switch k {
+	case "claude", "":
+		return provider.KindClaudeCode
+	case "codex":
+		return provider.KindCodex
+	case "claude-code", "openclaw":
+		return k
+	default:
+		return k
+	}
+}
+
 func (l *Launcher) UsesTmuxRuntime() bool {
 	return !l.usesCodexRuntime()
 }
@@ -3171,18 +3200,18 @@ func (l *Launcher) buildMCPServerMap() (map[string]any, error) {
 		return nil, err
 	}
 
-	servers["wuphf-office"] = map[string]any{
+	office := map[string]any{
 		"command": wuphfBinary,
 		"args":    []string{"mcp-team"},
 	}
+	servers["wuphf-office"] = office
 	if oneSecret := strings.TrimSpace(config.ResolveOneSecret()); oneSecret != "" {
-		servers["wuphf-office"].(map[string]any)["env"] = map[string]string{
+		office["env"] = map[string]string{
 			"ONE_SECRET": oneSecret,
 		}
 	}
 	if identity := strings.TrimSpace(config.ResolveOneIdentity()); identity != "" {
-		entry := servers["wuphf-office"].(map[string]any)
-		env, _ := entry["env"].(map[string]string)
+		env, _ := office["env"].(map[string]string)
 		if env == nil {
 			env = map[string]string{}
 		}
@@ -3190,7 +3219,42 @@ func (l *Launcher) buildMCPServerMap() (map[string]any, error) {
 		if identityType := strings.TrimSpace(config.ResolveOneIdentityType()); identityType != "" {
 			env["ONE_IDENTITY_TYPE"] = identityType
 		}
-		entry["env"] = env
+		office["env"] = env
+	}
+
+	switch config.ResolveMemoryBackend("") {
+	case config.MemoryBackendNex:
+		if apiKey != "" {
+			env, _ := office["env"].(map[string]string)
+			if env == nil {
+				env = map[string]string{}
+			}
+			env["WUPHF_API_KEY"] = apiKey
+			env["NEX_API_KEY"] = apiKey
+			office["env"] = env
+		}
+	case config.MemoryBackendGBrain:
+		env, _ := office["env"].(map[string]string)
+		if env == nil {
+			env = map[string]string{}
+		}
+		for key, value := range gbrainMCPEnv() {
+			env[key] = value
+		}
+		office["env"] = env
+	}
+
+	if memoryServer, err := resolvedMemoryMCPServer(); err != nil {
+		return nil, err
+	} else if memoryServer != nil && len(memoryServer.Env) > 0 {
+		env, _ := office["env"].(map[string]string)
+		if env == nil {
+			env = map[string]string{}
+		}
+		for key, value := range memoryServer.Env {
+			env[key] = value
+		}
+		office["env"] = env
 	}
 
 	if !config.ResolveNoNex() && apiKey != "" {

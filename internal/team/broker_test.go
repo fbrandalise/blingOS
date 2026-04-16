@@ -20,6 +20,7 @@ import (
 	"github.com/nex-crm/wuphf/internal/agent"
 	"github.com/nex-crm/wuphf/internal/buildinfo"
 	"github.com/nex-crm/wuphf/internal/config"
+	"github.com/nex-crm/wuphf/internal/provider"
 )
 
 func TestMain(m *testing.M) {
@@ -220,6 +221,64 @@ func TestBrokerMessageSubscribersReceivePostedMessages(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for subscribed message")
+	}
+}
+
+func TestRecordAgentUsageAttachesToCurrentTurnMessagesOnly(t *testing.T) {
+	b := NewBroker()
+	now := time.Now().UTC()
+	b.mu.Lock()
+	b.messages = []channelMessage{
+		{
+			ID:        "msg-1",
+			From:      "ceo",
+			Content:   "older turn",
+			Timestamp: now.Add(-2 * time.Minute).Format(time.RFC3339),
+			Usage:     &messageUsage{TotalTokens: 111},
+		},
+		{
+			ID:        "msg-2",
+			From:      "pm",
+			Content:   "interleaved",
+			Timestamp: now.Add(-30 * time.Second).Format(time.RFC3339),
+		},
+		{
+			ID:        "msg-3",
+			From:      "ceo",
+			Content:   "current turn kickoff",
+			Timestamp: now.Add(-10 * time.Second).Format(time.RFC3339),
+		},
+		{
+			ID:        "msg-4",
+			From:      "system",
+			Content:   "routing",
+			Timestamp: now.Add(-5 * time.Second).Format(time.RFC3339),
+		},
+		{
+			ID:        "msg-5",
+			From:      "ceo",
+			Content:   "current turn answer",
+			Timestamp: now.Format(time.RFC3339),
+		},
+	}
+	b.mu.Unlock()
+
+	b.RecordAgentUsage("ceo", "claude-sonnet-4-6", provider.ClaudeUsage{
+		InputTokens:         800,
+		OutputTokens:        200,
+		CacheReadTokens:     50,
+		CacheCreationTokens: 25,
+	})
+
+	msgs := b.Messages()
+	if msgs[0].Usage == nil || msgs[0].Usage.TotalTokens != 111 {
+		t.Fatalf("expected older turn usage to remain untouched, got %+v", msgs[0].Usage)
+	}
+	if msgs[2].Usage == nil || msgs[2].Usage.TotalTokens != 1075 {
+		t.Fatalf("expected msg-3 to receive usage, got %+v", msgs[2].Usage)
+	}
+	if msgs[4].Usage == nil || msgs[4].Usage.TotalTokens != 1075 {
+		t.Fatalf("expected msg-5 to receive usage, got %+v", msgs[4].Usage)
 	}
 }
 
@@ -763,6 +822,9 @@ func TestBrokerAuthRejectsUnauthenticated(t *testing.T) {
 	defer func() { brokerStatePath = oldPathFn }()
 
 	b := NewBroker()
+	b.runtimeProvider = "codex"
+	t.Setenv("WUPHF_MEMORY_BACKEND", config.MemoryBackendGBrain)
+	t.Setenv("WUPHF_OPENAI_API_KEY", "sk-test-openai")
 	if err := b.StartOnPort(0); err != nil {
 		t.Fatalf("failed to start broker: %v", err)
 	}
@@ -780,9 +842,13 @@ func TestBrokerAuthRejectsUnauthenticated(t *testing.T) {
 		t.Fatalf("expected 200 on /health, got %d", resp.StatusCode)
 	}
 	var health struct {
-		SessionMode   string `json:"session_mode"`
-		OneOnOneAgent string `json:"one_on_one_agent"`
-		Build         struct {
+		SessionMode         string `json:"session_mode"`
+		OneOnOneAgent       string `json:"one_on_one_agent"`
+		Provider            string `json:"provider"`
+		MemoryBackend       string `json:"memory_backend"`
+		MemoryBackendActive string `json:"memory_backend_active"`
+		NexConnected        bool   `json:"nex_connected"`
+		Build               struct {
 			Version        string `json:"version"`
 			BuildTimestamp string `json:"build_timestamp"`
 		} `json:"build"`
@@ -797,6 +863,18 @@ func TestBrokerAuthRejectsUnauthenticated(t *testing.T) {
 	}
 	if health.OneOnOneAgent != DefaultOneOnOneAgent {
 		t.Fatalf("expected health to report default 1o1 agent %q, got %q", DefaultOneOnOneAgent, health.OneOnOneAgent)
+	}
+	if health.Provider != "codex" {
+		t.Fatalf("expected health to report provider codex, got %q", health.Provider)
+	}
+	if health.MemoryBackend != config.MemoryBackendGBrain {
+		t.Fatalf("expected health to report selected memory backend gbrain, got %q", health.MemoryBackend)
+	}
+	if health.MemoryBackendActive != config.MemoryBackendNone {
+		t.Fatalf("expected inactive gbrain backend without CLI installed, got %q", health.MemoryBackendActive)
+	}
+	if health.NexConnected {
+		t.Fatal("expected nex_connected=false when gbrain is selected")
 	}
 	wantBuild := buildinfo.Current()
 	if health.Build.Version != wantBuild.Version {

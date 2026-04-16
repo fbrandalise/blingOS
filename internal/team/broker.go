@@ -112,7 +112,16 @@ type channelMessage struct {
 	Tagged      []string          `json:"tagged"`
 	ReplyTo     string            `json:"reply_to,omitempty"`
 	Timestamp   string            `json:"timestamp"`
+	Usage       *messageUsage     `json:"usage,omitempty"`
 	Reactions   []messageReaction `json:"reactions,omitempty"`
+}
+
+type messageUsage struct {
+	InputTokens         int `json:"input_tokens,omitempty"`
+	OutputTokens        int `json:"output_tokens,omitempty"`
+	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
+	TotalTokens         int `json:"total_tokens,omitempty"`
 }
 
 type interviewOption struct {
@@ -229,16 +238,17 @@ func DMTargetAgent(slug string) string {
 }
 
 type officeMember struct {
-	Slug           string   `json:"slug"`
-	Name           string   `json:"name"`
-	Role           string   `json:"role,omitempty"`
-	Expertise      []string `json:"expertise,omitempty"`
-	Personality    string   `json:"personality,omitempty"`
-	PermissionMode string   `json:"permission_mode,omitempty"`
-	AllowedTools   []string `json:"allowed_tools,omitempty"`
-	CreatedBy      string   `json:"created_by,omitempty"`
-	CreatedAt      string   `json:"created_at,omitempty"`
-	BuiltIn        bool     `json:"built_in,omitempty"`
+	Slug           string                   `json:"slug"`
+	Name           string                   `json:"name"`
+	Role           string                   `json:"role,omitempty"`
+	Expertise      []string                 `json:"expertise,omitempty"`
+	Personality    string                   `json:"personality,omitempty"`
+	PermissionMode string                   `json:"permission_mode,omitempty"`
+	AllowedTools   []string                 `json:"allowed_tools,omitempty"`
+	CreatedBy      string                   `json:"created_by,omitempty"`
+	CreatedAt      string                   `json:"created_at,omitempty"`
+	BuiltIn        bool                     `json:"built_in,omitempty"`
+	Provider       provider.ProviderBinding `json:"provider,omitempty"`
 }
 
 type officeActionLog struct {
@@ -405,6 +415,7 @@ type Broker struct {
 	channelStore        *channel.Store
 	messages            []channelMessage
 	members             []officeMember
+	memberIndex         map[string]int // slug → index into members; guarded by mu
 	channels            []teamChannel
 	sessionMode         string
 	oneOnOneAgent       string
@@ -442,6 +453,7 @@ type Broker struct {
 	runtimeProvider     string   // "codex" or "claude" — set by launcher
 	packSlug            string   // active agent pack slug ("founding-team", "revops", ...) — set by launcher
 	blankSlateLaunch    bool     // start without a saved blueprint and synthesize the first operation
+	openclawBridge      *OpenclawBridge // nil until the bridge attaches itself; used by handleOfficeMembers for live add/remove
 	generateMemberFn    func(prompt string) (generatedMemberTemplate, error)
 	generateChannelFn   func(prompt string) (generatedChannelTemplate, error)
 	policies            []officePolicy // active office operating rules
@@ -1711,6 +1723,109 @@ func (b *Broker) ExternalQueue(provider string) []channelMessage {
 	return out
 }
 
+// EnsureBridgedMember registers a bridged external agent as an office member
+// so it appears in the sidebar and can be @mentioned. Idempotent — calling with
+// an existing slug is a no-op. CreatedBy tags the source (e.g. "openclaw") so
+// the UI can distinguish bridged agents from built-ins or user-generated ones.
+func (b *Broker) EnsureBridgedMember(slug, name, createdBy string) error {
+	slug = normalizeChannelSlug(slug)
+	if slug == "" {
+		return fmt.Errorf("slug required")
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.findMemberLocked(slug) != nil {
+		return nil
+	}
+	member := officeMember{
+		Slug:      slug,
+		Name:      strings.TrimSpace(name),
+		Role:      "Bridged agent",
+		CreatedBy: strings.TrimSpace(createdBy),
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	if member.Name == "" {
+		member.Name = slug
+	}
+	applyOfficeMemberDefaults(&member)
+	b.members = append(b.members, member)
+	// Make sure the bridged agent shows up in #general so @mentions work.
+	for i := range b.channels {
+		if b.channels[i].Slug == "general" {
+			if !containsString(b.channels[i].Members, slug) {
+				b.channels[i].Members = append(b.channels[i].Members, slug)
+			}
+			break
+		}
+	}
+	if err := b.saveLocked(); err != nil {
+		return err
+	}
+	b.publishOfficeChangeLocked(officeChangeEvent{Kind: "member_created", Slug: slug})
+	return nil
+}
+
+// EnsureDirectChannel opens (or returns) the 1:1 DM channel between the
+// default human member and agentSlug. Returns the canonical channel slug
+// (pair-sorted via channel.DirectSlug). Safe to call repeatedly; the DM row
+// is upserted in both the channel store and the in-memory broker table so
+// it shows up in the sidebar and findChannelLocked resolves it.
+func (b *Broker) EnsureDirectChannel(agentSlug string) (string, error) {
+	agentSlug = normalizeActorSlug(agentSlug)
+	if agentSlug == "" {
+		return "", fmt.Errorf("agent slug required")
+	}
+	if b.channelStore == nil {
+		return "", fmt.Errorf("channel store not initialized")
+	}
+	ch, err := b.channelStore.GetOrCreateDirect("human", agentSlug)
+	if err != nil {
+		return "", fmt.Errorf("channel store GetOrCreateDirect: %w", err)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.findChannelLocked(ch.Slug) == nil {
+		now := time.Now().UTC().Format(time.RFC3339)
+		b.channels = append(b.channels, teamChannel{
+			Slug:        ch.Slug,
+			Name:        ch.Slug,
+			Type:        "dm",
+			Description: "Direct messages with " + agentSlug,
+			Members:     []string{"human", agentSlug},
+			CreatedBy:   "wuphf",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		})
+		if err := b.saveLocked(); err != nil {
+			return "", err
+		}
+	}
+	return ch.Slug, nil
+}
+
+// DMPartner returns the non-human member slug of a 1:1 DM channel. Returns
+// "" if the channel is not a DM, does not exist, or is a group DM. Used by
+// surface bridges (OpenClaw, Slack, etc.) to resolve "who is the human
+// talking to" when routing DM posts to the right agent without requiring an
+// @mention.
+func (b *Broker) DMPartner(channelSlug string) string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	ch := b.findChannelLocked(normalizeChannelSlug(channelSlug))
+	if ch == nil || !ch.isDM() {
+		return ""
+	}
+	if len(ch.Members) != 2 {
+		return ""
+	}
+	for _, m := range ch.Members {
+		if m != "human" && m != "you" {
+			return m
+		}
+	}
+	return ""
+}
+
 // PostInboundSurfaceMessage posts a message from an external surface into the broker channel.
 func (b *Broker) PostInboundSurfaceMessage(from, channel, content, provider string) (channelMessage, error) {
 	b.mu.Lock()
@@ -2173,18 +2288,8 @@ func defaultOfficeMembers() []officeMember {
 	}
 	members := make([]officeMember, 0, len(manifest.Members))
 	for _, cfg := range manifest.Members {
-		members = append(members, officeMember{
-			Slug:           cfg.Slug,
-			Name:           cfg.Name,
-			Role:           cfg.Role,
-			Expertise:      append([]string(nil), cfg.Expertise...),
-			Personality:    cfg.Personality,
-			PermissionMode: cfg.PermissionMode,
-			AllowedTools:   append([]string(nil), cfg.AllowedTools...),
-			CreatedBy:      "wuphf",
-			CreatedAt:      now,
-			BuiltIn:        cfg.System || cfg.Slug == manifest.Lead || cfg.Slug == "ceo",
-		})
+		builtIn := cfg.System || cfg.Slug == manifest.Lead || cfg.Slug == "ceo"
+		members = append(members, memberFromSpec(cfg, "wuphf", now, builtIn))
 	}
 	return members
 }
@@ -2539,12 +2644,104 @@ func (b *Broker) ensureDMConversationLocked(slug string) *teamChannel {
 
 func (b *Broker) findMemberLocked(slug string) *officeMember {
 	slug = normalizeChannelSlug(slug)
-	for i := range b.members {
-		if b.members[i].Slug == slug {
-			return &b.members[i]
-		}
+	if len(b.memberIndex) != len(b.members) {
+		b.rebuildMemberIndexLocked()
+	}
+	if i, ok := b.memberIndex[slug]; ok && i < len(b.members) && b.members[i].Slug == slug {
+		return &b.members[i]
 	}
 	return nil
+}
+
+// rebuildMemberIndexLocked rebuilds memberIndex from b.members. Callers must
+// hold b.mu. Called on load and after any structural mutation (remove, reorder)
+// to keep the map in sync with the slice. Appends and in-place updates are
+// handled by findMemberLocked's length-check lazy rebuild.
+func (b *Broker) rebuildMemberIndexLocked() {
+	b.memberIndex = make(map[string]int, len(b.members))
+	for i, m := range b.members {
+		b.memberIndex[m.Slug] = i
+	}
+}
+
+// AttachOpenclawBridge wires the OpenClaw bridge into the broker so
+// handleOfficeMembers can drive live subscribe/unsubscribe/sessions.create/
+// sessions.end calls as members are hired and fired. Called by the launcher
+// after StartOpenclawBridgeFromConfig succeeds. Safe to call with nil to
+// detach (tests).
+func (b *Broker) AttachOpenclawBridge(bridge *OpenclawBridge) {
+	b.mu.Lock()
+	b.openclawBridge = bridge
+	b.mu.Unlock()
+}
+
+// openclawBridgeLocked returns the attached bridge pointer. Callers must
+// hold b.mu. Kept as a small helper so the field is never read without the
+// lock (and so we have one place to note the invariant).
+func (b *Broker) openclawBridgeLocked() *OpenclawBridge {
+	return b.openclawBridge
+}
+
+// SetMemberProvider attaches or replaces the ProviderBinding on the given
+// office member and persists broker state. Used by the OpenClaw bootstrap
+// migration (moving legacy config.OpenclawBridges onto members) and by the
+// handleOfficeMembers update path. Returns an error if the member doesn't
+// exist; callers should ensure the member exists first.
+func (b *Broker) SetMemberProvider(slug string, binding provider.ProviderBinding) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	m := b.findMemberLocked(slug)
+	if m == nil {
+		return fmt.Errorf("set member provider: unknown slug %q", slug)
+	}
+	m.Provider = binding
+	return b.saveLocked()
+}
+
+// MemberProviderBinding returns the per-agent provider binding for slug, or
+// the zero value if the member does not exist. Safe to call from outside the
+// broker; takes the mutex internally.
+func (b *Broker) MemberProviderBinding(slug string) provider.ProviderBinding {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	m := b.findMemberLocked(slug)
+	if m == nil {
+		return provider.ProviderBinding{}
+	}
+	return m.Provider
+}
+
+// MemberProviderKind returns the effective runtime kind for the given slug,
+// falling back to the global runtime when the member has no explicit binding.
+// Used by the launcher's dispatch switch so each agent can run on its own
+// provider (e.g., one Codex agent + one Claude Code agent in the same team).
+func (b *Broker) MemberProviderKind(slug string) string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	m := b.findMemberLocked(slug)
+	if m == nil {
+		return ""
+	}
+	return m.Provider.Kind
+}
+
+// memberFromSpec builds an officeMember from a manifest MemberSpec, threading
+// Provider through. Used by defaultOfficeMembers and by HTTP create paths so
+// field-copy logic lives in one place.
+func memberFromSpec(spec company.MemberSpec, createdBy, createdAt string, builtIn bool) officeMember {
+	return officeMember{
+		Slug:           spec.Slug,
+		Name:           spec.Name,
+		Role:           spec.Role,
+		Expertise:      append([]string(nil), spec.Expertise...),
+		Personality:    spec.Personality,
+		PermissionMode: spec.PermissionMode,
+		AllowedTools:   append([]string(nil), spec.AllowedTools...),
+		CreatedBy:      createdBy,
+		CreatedAt:      createdAt,
+		BuiltIn:        builtIn,
+		Provider:       spec.Provider,
+	}
 }
 
 func uniqueSlugs(items []string) []string {
@@ -3333,20 +3530,23 @@ func (b *Broker) handleHealth(w http.ResponseWriter, r *http.Request) {
 	focus := b.focusMode
 	provider := b.runtimeProvider
 	b.mu.Unlock()
+	if strings.TrimSpace(provider) == "" {
+		provider = config.ResolveLLMProvider("")
+	}
+	memoryStatus := ResolveMemoryBackendStatus()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	// nex_connected now reflects whether the local nex-cli binary is available
-	// and the user hasn't disabled Nex for this session via --no-nex. The legacy
-	// HTTP ping to app.nex.ai is gone; Nex memory now lives behind nex-cli.
-	nexConnected := nex.Connected()
 	json.NewEncoder(w).Encode(map[string]any{
-		"status":           "ok",
-		"session_mode":     mode,
-		"one_on_one_agent": agent,
-		"focus_mode":       focus,
-		"provider":         provider,
-		"nex_connected":    nexConnected,
-		"build":            buildinfo.Current(),
+		"status":                "ok",
+		"session_mode":          mode,
+		"one_on_one_agent":      agent,
+		"focus_mode":            focus,
+		"provider":              provider,
+		"memory_backend":        memoryStatus.SelectedKind,
+		"memory_backend_active": memoryStatus.ActiveKind,
+		"memory_backend_ready":  memoryStatus.ActiveKind != config.MemoryBackendNone,
+		"nex_connected":         memoryStatus.ActiveKind == config.MemoryBackendNex && nex.Connected(),
+		"build":                 buildinfo.Current(),
 	})
 }
 
@@ -4677,10 +4877,10 @@ func (b *Broker) handleCompany(w http.ResponseWriter, r *http.Request) {
 func (b *Broker) handleConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		cfg, _ := config.Load()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"llm_provider": cfg.LLMProvider,
+			"llm_provider":   config.ResolveLLMProvider(""),
+			"memory_backend": config.ResolveMemoryBackend(""),
 		})
 	case http.MethodPost:
 		var body struct {
@@ -4727,15 +4927,16 @@ func (b *Broker) handleOfficeMembers(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"members": members})
 	case http.MethodPost:
 		var body struct {
-			Action         string   `json:"action"`
-			Slug           string   `json:"slug"`
-			Name           string   `json:"name"`
-			Role           string   `json:"role"`
-			Expertise      []string `json:"expertise"`
-			Personality    string   `json:"personality"`
-			PermissionMode string   `json:"permission_mode"`
-			AllowedTools   []string `json:"allowed_tools"`
-			CreatedBy      string   `json:"created_by"`
+			Action         string                    `json:"action"`
+			Slug           string                    `json:"slug"`
+			Name           string                    `json:"name"`
+			Role           string                    `json:"role"`
+			Expertise      []string                  `json:"expertise"`
+			Personality    string                    `json:"personality"`
+			PermissionMode string                    `json:"permission_mode"`
+			AllowedTools   []string                  `json:"allowed_tools"`
+			CreatedBy      string                    `json:"created_by"`
+			Provider       *provider.ProviderBinding `json:"provider,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid json", http.StatusBadRequest)
@@ -4757,6 +4958,12 @@ func (b *Broker) handleOfficeMembers(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "member already exists", http.StatusConflict)
 				return
 			}
+			if body.Provider != nil {
+				if err := provider.ValidateKind(body.Provider.Kind); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			}
 			member := officeMember{
 				Slug:           slug,
 				Name:           strings.TrimSpace(body.Name),
@@ -4768,8 +4975,46 @@ func (b *Broker) handleOfficeMembers(w http.ResponseWriter, r *http.Request) {
 				CreatedBy:      strings.TrimSpace(body.CreatedBy),
 				CreatedAt:      now,
 			}
+			if body.Provider != nil {
+				member.Provider = *body.Provider
+			}
 			applyOfficeMemberDefaults(&member)
+
+			// For openclaw agents, reach the gateway BEFORE we persist: if the
+			// caller didn't supply a session key, auto-create one; either way,
+			// attach the bridge subscription. If the gateway is unreachable we
+			// fail the whole create so we don't persist a half-configured
+			// member that can't actually talk.
+			if member.Provider.Kind == provider.KindOpenclaw {
+				if member.Provider.Openclaw == nil {
+					member.Provider.Openclaw = &provider.OpenclawProviderBinding{}
+				}
+				bridge := b.openclawBridgeLocked()
+				if bridge == nil {
+					http.Error(w, "openclaw bridge not active; cannot create openclaw member", http.StatusServiceUnavailable)
+					return
+				}
+				if member.Provider.Openclaw.SessionKey == "" {
+					agentID := member.Provider.Openclaw.AgentID
+					if agentID == "" {
+						agentID = "main"
+					}
+					label := fmt.Sprintf("wuphf-%s-%d", slug, time.Now().UnixNano())
+					key, err := bridge.CreateSession(r.Context(), agentID, label)
+					if err != nil {
+						http.Error(w, fmt.Sprintf("openclaw sessions.create: %v", err), http.StatusBadGateway)
+						return
+					}
+					member.Provider.Openclaw.SessionKey = key
+				}
+				if err := bridge.AttachSlug(r.Context(), slug, member.Provider.Openclaw.SessionKey); err != nil {
+					http.Error(w, fmt.Sprintf("openclaw subscribe: %v", err), http.StatusBadGateway)
+					return
+				}
+			}
+
 			b.members = append(b.members, member)
+			b.memberIndex[member.Slug] = len(b.members) - 1
 			if err := b.saveLocked(); err != nil {
 				http.Error(w, "failed to persist broker state", http.StatusInternalServerError)
 				return
@@ -4801,6 +5046,65 @@ func (b *Broker) handleOfficeMembers(w http.ResponseWriter, r *http.Request) {
 			if body.AllowedTools != nil {
 				member.AllowedTools = normalizeStringList(body.AllowedTools)
 			}
+			if body.Provider != nil {
+				if err := provider.ValidateKind(body.Provider.Kind); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				oldBinding := member.Provider
+				newBinding := *body.Provider
+
+				// Provider switch: reconcile the bridge state best-effort. We
+				// don't block the update on gateway failures — the persisted
+				// binding is the new truth, and a leaked old session is
+				// recoverable via `openclaw sessions list` out-of-band.
+				bridge := b.openclawBridgeLocked()
+
+				fromOpenclaw := oldBinding.Kind == provider.KindOpenclaw
+				toOpenclaw := newBinding.Kind == provider.KindOpenclaw
+
+				if toOpenclaw {
+					if bridge == nil {
+						http.Error(w, "openclaw bridge not active; cannot switch agent to openclaw", http.StatusServiceUnavailable)
+						return
+					}
+					if newBinding.Openclaw == nil {
+						newBinding.Openclaw = &provider.OpenclawProviderBinding{}
+					}
+					if newBinding.Openclaw.SessionKey == "" {
+						agentID := newBinding.Openclaw.AgentID
+						if agentID == "" {
+							agentID = "main"
+						}
+						label := fmt.Sprintf("wuphf-%s-%d", member.Slug, time.Now().UnixNano())
+						key, err := bridge.CreateSession(r.Context(), agentID, label)
+						if err != nil {
+							http.Error(w, fmt.Sprintf("openclaw sessions.create: %v", err), http.StatusBadGateway)
+							return
+						}
+						newBinding.Openclaw.SessionKey = key
+					}
+				}
+
+				if fromOpenclaw && bridge != nil {
+					// Detach old session from subscriptions. Best-effort; log via
+					// the bridge's own system-message channel on failure. The
+					// daemon-side session lingers (no sessions.end method); user
+					// can prune via the OpenClaw CLI if they care.
+					if err := bridge.DetachSlug(r.Context(), member.Slug); err != nil {
+						go bridge.postSystemMessage(fmt.Sprintf("agent %q provider-switch: detach warning: %v", member.Slug, err))
+					}
+				}
+
+				if toOpenclaw {
+					if err := bridge.AttachSlug(r.Context(), member.Slug, newBinding.Openclaw.SessionKey); err != nil {
+						http.Error(w, fmt.Sprintf("openclaw subscribe: %v", err), http.StatusBadGateway)
+						return
+					}
+				}
+
+				member.Provider = newBinding
+			}
 			applyOfficeMemberDefaults(member)
 			if err := b.saveLocked(); err != nil {
 				http.Error(w, "failed to persist broker state", http.StatusInternalServerError)
@@ -4818,6 +5122,19 @@ func (b *Broker) handleOfficeMembers(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "cannot remove built-in member", http.StatusBadRequest)
 				return
 			}
+			// If the member was bridged to OpenClaw, unsubscribe from the
+			// gateway. Best-effort: member removal must succeed even when
+			// the gateway is unreachable. We do NOT call sessions.end because
+			// the current daemon doesn't expose that method — the session
+			// lingers daemon-side and the user can clean it up via the
+			// OpenClaw CLI if they want to reclaim the slot.
+			if member.Provider.Kind == provider.KindOpenclaw {
+				if bridge := b.openclawBridgeLocked(); bridge != nil {
+					if err := bridge.DetachSlug(r.Context(), member.Slug); err != nil {
+						go bridge.postSystemMessage(fmt.Sprintf("agent %q removed: detach warning: %v", member.Slug, err))
+					}
+				}
+			}
 			filteredMembers := b.members[:0]
 			for _, existing := range b.members {
 				if existing.Slug != slug {
@@ -4825,6 +5142,7 @@ func (b *Broker) handleOfficeMembers(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			b.members = filteredMembers
+			b.rebuildMemberIndexLocked()
 			for i := range b.channels {
 				nextMembers := b.channels[i].Members[:0]
 				for _, existing := range b.channels[i].Members {
@@ -5441,6 +5759,8 @@ type usageEvent struct {
 	CostUsd             float64
 }
 
+const messageUsageAttachMaxAge = 15 * time.Minute
+
 func (b *Broker) recordUsageLocked(event usageEvent) {
 	if b.usage.Agents == nil {
 		b.usage.Agents = make(map[string]usageTotals)
@@ -5459,6 +5779,7 @@ func (b *Broker) recordUsageLocked(event usageEvent) {
 	total := b.usage.Total
 	applyUsageEvent(&total, event)
 	b.usage.Total = total
+	b.attachUsageToRecentMessagesLocked(event)
 }
 
 func applyUsageEvent(dst *usageTotals, event usageEvent) {
@@ -5469,6 +5790,68 @@ func applyUsageEvent(dst *usageTotals, event usageEvent) {
 	dst.TotalTokens += event.InputTokens + event.OutputTokens + event.CacheReadTokens + event.CacheCreationTokens
 	dst.CostUsd += event.CostUsd
 	dst.Requests++
+}
+
+func usageEventToMessageUsage(event usageEvent) *messageUsage {
+	total := event.InputTokens + event.OutputTokens + event.CacheReadTokens + event.CacheCreationTokens
+	if total == 0 {
+		return nil
+	}
+	return &messageUsage{
+		InputTokens:         event.InputTokens,
+		OutputTokens:        event.OutputTokens,
+		CacheReadTokens:     event.CacheReadTokens,
+		CacheCreationTokens: event.CacheCreationTokens,
+		TotalTokens:         total,
+	}
+}
+
+func cloneMessageUsage(src *messageUsage) *messageUsage {
+	if src == nil {
+		return nil
+	}
+	cp := *src
+	return &cp
+}
+
+func messageIsWithinUsageAttachWindow(timestamp string, now time.Time) bool {
+	ts := strings.TrimSpace(timestamp)
+	if ts == "" {
+		return true
+	}
+	parsed, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		parsed, err = time.Parse(time.RFC3339Nano, ts)
+		if err != nil {
+			return true
+		}
+	}
+	return now.Sub(parsed) <= messageUsageAttachMaxAge
+}
+
+func (b *Broker) attachUsageToRecentMessagesLocked(event usageEvent) {
+	usage := usageEventToMessageUsage(event)
+	if usage == nil {
+		return
+	}
+	slug := strings.TrimSpace(event.AgentSlug)
+	if slug == "" {
+		return
+	}
+	now := time.Now().UTC()
+	for i := len(b.messages) - 1; i >= 0; i-- {
+		msg := &b.messages[i]
+		if strings.TrimSpace(msg.From) != slug {
+			continue
+		}
+		if msg.Usage != nil {
+			break
+		}
+		if !messageIsWithinUsageAttachWindow(msg.Timestamp, now) {
+			break
+		}
+		msg.Usage = cloneMessageUsage(usage)
+	}
 }
 
 // RecordAgentUsage records token usage from a provider stream result for a given agent.
@@ -6991,9 +7374,14 @@ func (b *Broker) handleTaskPlan(w http.ResponseWriter, r *http.Request) {
 func (b *Broker) handleMemory(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		channel := normalizeChannelSlug(r.URL.Query().Get("channel"))
-		if channel == "" {
-			channel = "general"
+		namespace := strings.TrimSpace(r.URL.Query().Get("namespace"))
+		query := strings.TrimSpace(r.URL.Query().Get("query"))
+		keyFilter := strings.TrimSpace(r.URL.Query().Get("key"))
+		limit := 5
+		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+				limit = parsed
+			}
 		}
 		b.mu.Lock()
 		mem := b.sharedMemory
@@ -7002,12 +7390,49 @@ func (b *Broker) handleMemory(w http.ResponseWriter, r *http.Request) {
 			mem = make(map[string]map[string]string)
 		}
 		w.Header().Set("Content-Type", "application/json")
+		if namespace != "" {
+			entries := mem[namespace]
+			switch {
+			case keyFilter != "":
+				var payload []brokerMemoryEntry
+				if raw, ok := entries[keyFilter]; ok {
+					payload = append(payload, brokerEntryFromNote(decodePrivateMemoryNote(keyFilter, raw)))
+				}
+				json.NewEncoder(w).Encode(map[string]any{
+					"namespace": namespace,
+					"entries":   payload,
+				})
+				return
+			case query != "":
+				matches := searchPrivateMemory(entries, query, limit)
+				payload := make([]brokerMemoryEntry, 0, len(matches))
+				for _, note := range matches {
+					payload = append(payload, brokerEntryFromNote(note))
+				}
+				json.NewEncoder(w).Encode(map[string]any{
+					"namespace": namespace,
+					"entries":   payload,
+				})
+				return
+			default:
+				matches := searchPrivateMemory(entries, "", len(entries))
+				payload := make([]brokerMemoryEntry, 0, len(matches))
+				for _, note := range matches {
+					payload = append(payload, brokerEntryFromNote(note))
+				}
+				json.NewEncoder(w).Encode(map[string]any{
+					"namespace": namespace,
+					"entries":   payload,
+				})
+				return
+			}
+		}
 		json.NewEncoder(w).Encode(map[string]any{"memory": mem})
 	case http.MethodPost:
 		var body struct {
 			Namespace string `json:"namespace"`
 			Key       string `json:"key"`
-			Value     string `json:"value"`
+			Value     any    `json:"value"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid json", http.StatusBadRequest)
@@ -7026,7 +7451,20 @@ func (b *Broker) handleMemory(w http.ResponseWriter, r *http.Request) {
 		if b.sharedMemory[ns] == nil {
 			b.sharedMemory[ns] = make(map[string]string)
 		}
-		b.sharedMemory[ns][key] = body.Value
+		value := ""
+		switch typed := body.Value.(type) {
+		case string:
+			value = typed
+		default:
+			data, err := json.Marshal(typed)
+			if err != nil {
+				b.mu.Unlock()
+				http.Error(w, "invalid value", http.StatusBadRequest)
+				return
+			}
+			value = string(data)
+		}
+		b.sharedMemory[ns][key] = value
 		if err := b.saveLocked(); err != nil {
 			b.mu.Unlock()
 			http.Error(w, "failed to persist", http.StatusInternalServerError)
@@ -7921,16 +8359,30 @@ func FormatChannelView(messages []channelMessage) string {
 			continue
 		}
 		if strings.HasPrefix(m.Content, "[STATUS]") {
-			sb.WriteString(fmt.Sprintf("  %s  @%s %s\n", ts, prefix, m.Content))
+			sb.WriteString(fmt.Sprintf("  %s  @%s %s%s\n", ts, prefix, m.Content, formatMessageUsageSuffix(m.Usage)))
 		} else {
 			thread := ""
 			if m.ReplyTo != "" {
 				thread = fmt.Sprintf(" ↳ %s", m.ReplyTo)
 			}
-			sb.WriteString(fmt.Sprintf("  %s%s  @%s: %s\n", ts, thread, prefix, m.Content))
+			sb.WriteString(fmt.Sprintf("  %s%s  @%s: %s%s\n", ts, thread, prefix, m.Content, formatMessageUsageSuffix(m.Usage)))
 		}
 	}
 	return sb.String()
+}
+
+func formatMessageUsageSuffix(usage *messageUsage) string {
+	if usage == nil {
+		return ""
+	}
+	total := usage.TotalTokens
+	if total == 0 {
+		total = usage.InputTokens + usage.OutputTokens + usage.CacheReadTokens + usage.CacheCreationTokens
+	}
+	if total == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" [%d tok]", total)
 }
 
 // --------------- Skills ---------------
@@ -8379,7 +8831,7 @@ func (b *Broker) handleInvokeSkill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"skill": *sk})
+	json.NewEncoder(w).Encode(map[string]any{"skill": *sk, "channel": channel})
 }
 
 // parseSkillProposalLocked extracts a [SKILL PROPOSAL] block from a message

@@ -115,7 +115,7 @@ func ReadCodexJSONStream(r io.Reader, onEvent func(CodexStreamEvent)) (CodexStre
 
 		state.consumeToolEvent(event, onEvent)
 		state.consumeTextDelta(event, onEvent)
-		if usage := extractCodexUsage(event); !usageIsZero(usage) {
+		if usage, ok := extractCodexUsage(line); ok {
 			result.Usage = usage
 		}
 
@@ -274,6 +274,82 @@ func extractCodexTextFromItem(item codexJSONItem) string {
 	return strings.TrimSpace(strings.Join(parts, "\n"))
 }
 
+func extractCodexUsage(line string) (ClaudeUsage, bool) {
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(line), &raw); err != nil {
+		return ClaudeUsage{}, false
+	}
+
+	usageMap, ok := nestedUsageMap(raw)
+	if !ok {
+		return ClaudeUsage{}, false
+	}
+
+	usage := ClaudeUsage{
+		InputTokens:         usageInt(usageMap["input_tokens"]),
+		OutputTokens:        usageInt(usageMap["output_tokens"]),
+		CacheReadTokens:     usageInt(firstPresent(usageMap, "cached_input_tokens", "cache_read_input_tokens", "cache_read_tokens")),
+		CacheCreationTokens: usageInt(firstPresent(usageMap, "cache_creation_input_tokens", "cache_creation_tokens")),
+		CostUSD:             usageFloat(firstPresent(raw, "total_cost_usd", "cost_usd")),
+	}
+	total := usage.InputTokens + usage.OutputTokens + usage.CacheReadTokens + usage.CacheCreationTokens
+	return usage, total > 0 || usage.CostUSD > 0
+}
+
+func nestedUsageMap(raw map[string]any) (map[string]any, bool) {
+	if usage, ok := raw["usage"].(map[string]any); ok {
+		return usage, true
+	}
+	if response, ok := raw["response"].(map[string]any); ok {
+		if usage, ok := response["usage"].(map[string]any); ok {
+			return usage, true
+		}
+	}
+	if data, ok := raw["data"].(map[string]any); ok {
+		if usage, ok := data["usage"].(map[string]any); ok {
+			return usage, true
+		}
+	}
+	return nil, false
+}
+
+func firstPresent(raw map[string]any, keys ...string) any {
+	for _, key := range keys {
+		if value, ok := raw[key]; ok {
+			return value
+		}
+	}
+	return nil
+}
+
+func usageInt(value any) int {
+	switch v := value.(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case json.Number:
+		n, _ := v.Int64()
+		return int(n)
+	default:
+		return 0
+	}
+}
+
+func usageFloat(value any) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case json.Number:
+		n, _ := v.Float64()
+		return n
+	default:
+		return 0
+	}
+}
+
 func extractCodexError(event codexJSONEvent) string {
 	switch event.Type {
 	case "error", "turn.failed", "response.failed":
@@ -287,7 +363,7 @@ func extractCodexError(event codexJSONEvent) string {
 	return ""
 }
 
-func extractCodexUsage(event codexJSONEvent) ClaudeUsage {
+func extractCodexEventUsage(event codexJSONEvent) ClaudeUsage {
 	if event.Usage == nil {
 		return ClaudeUsage{}
 	}

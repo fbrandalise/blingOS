@@ -9,17 +9,19 @@ import (
 	"time"
 
 	"github.com/nex-crm/wuphf/internal/config"
+	"github.com/nex-crm/wuphf/internal/provider"
 )
 
 type MemberSpec struct {
-	Slug           string   `json:"slug"`
-	Name           string   `json:"name"`
-	Role           string   `json:"role,omitempty"`
-	Expertise      []string `json:"expertise,omitempty"`
-	Personality    string   `json:"personality,omitempty"`
-	PermissionMode string   `json:"permission_mode,omitempty"`
-	AllowedTools   []string `json:"allowed_tools,omitempty"`
-	System         bool     `json:"system,omitempty"`
+	Slug           string                   `json:"slug"`
+	Name           string                   `json:"name"`
+	Role           string                   `json:"role,omitempty"`
+	Expertise      []string                 `json:"expertise,omitempty"`
+	Personality    string                   `json:"personality,omitempty"`
+	PermissionMode string                   `json:"permission_mode,omitempty"`
+	AllowedTools   []string                 `json:"allowed_tools,omitempty"`
+	System         bool                     `json:"system,omitempty"`
+	Provider       provider.ProviderBinding `json:"provider,omitempty"`
 }
 
 type ChannelSurfaceSpec struct {

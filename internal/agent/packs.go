@@ -376,3 +376,12 @@ func LookupLegacyPack(slug string) *PackDefinition {
 
 // GetPack is a deprecated compatibility alias for LookupLegacyPack.
 func GetPack(slug string) *PackDefinition { return LookupLegacyPack(slug) }
+
+// PackSlugs returns the list of all registered pack slugs, in registration order.
+func PackSlugs() []string {
+	slugs := make([]string, 0, len(legacyPacks))
+	for i := range legacyPacks {
+		slugs = append(slugs, legacyPacks[i].Slug)
+	}
+	return slugs
+}
