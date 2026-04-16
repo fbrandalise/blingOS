@@ -109,7 +109,7 @@ func runImport(args []string) {
 	var err error
 
 	if strings.ToLower(strings.TrimSpace(*fromPath)) == "legacy" {
-		state, agentCount, taskCount, err = importFromexternal orchestratorDB(*port)
+		state, agentCount, taskCount, err = importFromLegacyDB(*port)
 	} else {
 		state, agentCount, taskCount, err = importFromJSONFile(*fromPath)
 	}
@@ -148,9 +148,9 @@ func runImport(args []string) {
 	fmt.Printf("Imported %d agents, %d tasks from %s. Run wuphf to launch.\n", agentCount, taskCount, source)
 }
 
-// importFromexternal orchestratorDB connects to external orchestrator's embedded Postgres and reads
+// importFromLegacyDB connects to external orchestrator's embedded Postgres and reads
 // agents and issues directly. external orchestrator must be running.
-func importFromexternal orchestratorDB(portOverride int) (importedBrokerState, int, int, error) {
+func importFromLegacyDB(portOverride int) (importedBrokerState, int, int, error) {
 	port := 54329
 	if portOverride > 0 {
 		port = portOverride
@@ -158,7 +158,7 @@ func importFromexternal orchestratorDB(portOverride int) (importedBrokerState, i
 
 	// Try to read external orchestrator config for a custom port
 	if portOverride == 0 {
-		if p, ok := readexternal orchestratorPort(); ok {
+		if p, ok := readLegacyPort(); ok {
 			port = p
 		}
 	}
@@ -323,8 +323,8 @@ func importFromexternal orchestratorDB(portOverride int) (importedBrokerState, i
 	return state, len(members), len(tasks), nil
 }
 
-// readexternal orchestratorPort reads the external orchestrator config file to find a custom Postgres port.
-func readexternal orchestratorPort() (int, bool) {
+// readLegacyPort reads the external orchestrator config file to find a custom Postgres port.
+func readLegacyPort() (int, bool) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return 0, false
