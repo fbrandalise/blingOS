@@ -26,6 +26,11 @@ const (
 	EventToolResult  EventName = "tool_result"
 )
 
+const (
+	defaultMaxStuckTicks   = 20
+	defaultMaxErrorRetries = 3
+)
+
 // EventHandler is a callback for agent loop events.
 type EventHandler func(args ...any)
 
@@ -48,7 +53,17 @@ type AgentLoop struct {
 	collectedInsights []string
 	taskLogRoot       string
 	lastCompactionAt  int
-	mu                sync.Mutex
+
+	// Stuck detection and retry cap.
+	lastPhase       AgentPhase
+	stuckTicks      int
+	errorCount      int
+	errorTaskID     string
+	escalator       Escalator
+	maxStuckTicks   int
+	maxErrorRetries int
+
+	mu sync.Mutex
 }
 
 // NewAgentLoop creates a new agent loop with the given dependencies.
@@ -202,7 +217,33 @@ func (l *AgentLoop) Tick() error {
 	case PhaseDone:
 		return l.handleDone()
 	case PhaseError:
-		// After error, reset to idle so the agent can process new messages.
+		taskID := strings.TrimSpace(l.state.TaskID)
+		errMsg := l.state.Error
+
+		// Track retries per-task. Reset counter when we see a fresh task id.
+		if taskID != l.errorTaskID {
+			l.errorTaskID = taskID
+			l.errorCount = 0
+		}
+		l.errorCount++
+
+		if l.errorCount >= l.resolveMaxErrorRetries() {
+			if l.escalator != nil {
+				// Capture locals before releasing the lock so the callback can
+				// safely call back into the broker without deadlocking.
+				escalator := l.escalator
+				slug := l.state.Config.Slug
+				detail := errMsg
+				l.mu.Unlock()
+				escalator(slug, taskID, EscalationMaxRetries, detail)
+				l.mu.Lock()
+			}
+			// Reset so a future task starts fresh.
+			l.errorTaskID = ""
+			l.errorCount = 0
+		}
+
+		// Always reset to idle so the agent can process new messages.
 		l.state.Error = ""
 		l.setPhase(PhaseIdle)
 		return nil
@@ -222,6 +263,94 @@ func (l *AgentLoop) emit(event EventName, args ...any) {
 	for _, h := range l.eventHandlers[event] {
 		h(args...)
 	}
+}
+
+// SetEscalator wires a callback for stuck/retry escalation. Safe to call
+// before or after Start(); takes effect on the next error or stuck event.
+func (l *AgentLoop) SetEscalator(fn Escalator) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.escalator = fn
+}
+
+// SetStuckLimits overrides the default thresholds for stuck detection and
+// error retries. Pass 0 for either to keep the default.
+func (l *AgentLoop) SetStuckLimits(maxStuckTicks, maxErrorRetries int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.maxStuckTicks = maxStuckTicks
+	l.maxErrorRetries = maxErrorRetries
+}
+
+func (l *AgentLoop) resolveMaxStuckTicks() int {
+	if l.maxStuckTicks > 0 {
+		return l.maxStuckTicks
+	}
+	return defaultMaxStuckTicks
+}
+
+func (l *AgentLoop) resolveMaxErrorRetries() int {
+	if l.maxErrorRetries > 0 {
+		return l.maxErrorRetries
+	}
+	return defaultMaxErrorRetries
+}
+
+// NotifyTick is called by the worker goroutine (or a test) once per tick so
+// the loop can detect when it's stuck in the same phase. Callers should invoke
+// this every cycle regardless of whether Tick runs.
+func (l *AgentLoop) NotifyTick() {
+	l.mu.Lock()
+	phase := l.state.Phase
+	if phase != l.lastPhase {
+		l.lastPhase = phase
+		l.stuckTicks = 0
+		l.mu.Unlock()
+		return
+	}
+
+	// Happy-path phases — the agent is allowed to sit there indefinitely.
+	if phase == PhaseIdle || phase == PhaseDone {
+		l.mu.Unlock()
+		return
+	}
+
+	l.stuckTicks++
+	threshold := l.resolveMaxStuckTicks()
+	if l.stuckTicks < threshold {
+		l.mu.Unlock()
+		return
+	}
+
+	escalator := l.escalator
+	slug := l.state.Config.Slug
+	taskID := l.state.TaskID
+	l.stuckTicks = 0 // reset so we don't spam
+	l.mu.Unlock()
+
+	if escalator != nil {
+		escalator(slug, taskID, EscalationStuck, fmt.Sprintf("agent stuck in %s for %d ticks", phase, threshold))
+	}
+}
+
+// forcePhaseErrorForTest drives a single PhaseError tick for the given task id.
+// Test-only helper; lives here so it has access to unexported fields.
+func (l *AgentLoop) forcePhaseErrorForTest(taskID, errMsg string) {
+	l.mu.Lock()
+	l.state.TaskID = taskID
+	l.state.Error = errMsg
+	l.setPhase(PhaseError)
+	l.mu.Unlock()
+	_ = l.Tick()
+}
+
+// setPhaseForTest is a test-only accessor that sets the current phase without
+// running through Tick. Used by stuck-detection tests to hold the loop in a
+// non-idle phase.
+func (l *AgentLoop) setPhaseForTest(phase AgentPhase) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.setPhase(phase)
 }
 
 // buildContext prepares the session and context for LLM streaming.

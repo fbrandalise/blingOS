@@ -580,6 +580,65 @@ func TestStreamLLMErrorChunk(t *testing.T) {
 	}
 }
 
+func TestAgentLoop_PhaseErrorEscalatesAfterMaxRetries(t *testing.T) {
+	type escalation struct {
+		slug, task string
+		reason     EscalationReason
+		detail     string
+	}
+	var events []escalation
+
+	loop, _ := newTestLoop(t, mockStreamFn("ok"))
+	loop.SetEscalator(func(slug, taskID string, reason EscalationReason, detail string) {
+		events = append(events, escalation{slug, taskID, reason, detail})
+	})
+	// maxStuckTicks=0 keeps default; maxErrorRetries=2 means escalate on the 2nd error.
+	loop.SetStuckLimits(0, 2)
+	loop.Start()
+
+	// Drive PhaseError three times on the same task id.
+	for i := 0; i < 3; i++ {
+		loop.forcePhaseErrorForTest("eng-42", "boom")
+	}
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 escalation, got %d: %+v", len(events), events)
+	}
+	if events[0].reason != EscalationMaxRetries {
+		t.Fatalf("expected reason=%s, got %s", EscalationMaxRetries, events[0].reason)
+	}
+	if events[0].task != "eng-42" {
+		t.Fatalf("expected task=eng-42, got %s", events[0].task)
+	}
+}
+
+func TestAgentLoop_StuckDetectionEscalates(t *testing.T) {
+	var fired int
+	var reasons []EscalationReason
+
+	loop, _ := newTestLoop(t, mockStreamFn("ok"))
+	loop.SetEscalator(func(slug, taskID string, reason EscalationReason, detail string) {
+		fired++
+		reasons = append(reasons, reason)
+	})
+	// Escalate after 3 ticks with no phase change.
+	loop.SetStuckLimits(3, 0)
+	loop.Start()
+
+	// Force the loop into a non-idle phase, then NotifyTick repeatedly.
+	loop.setPhaseForTest(PhaseBuildContext)
+	for i := 0; i < 4; i++ {
+		loop.NotifyTick()
+	}
+
+	if fired != 1 {
+		t.Fatalf("expected 1 escalation, got %d", fired)
+	}
+	if len(reasons) != 1 || reasons[0] != EscalationStuck {
+		t.Fatalf("expected reason=stuck, got %v", reasons)
+	}
+}
+
 func TestOffRemovesHandler(t *testing.T) {
 	loop, _ := newTestLoop(t, mockStreamFn("test"))
 

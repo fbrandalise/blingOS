@@ -95,3 +95,17 @@ type StreamChunk struct {
 
 // StreamFn is a function that streams LLM output as a channel of chunks.
 type StreamFn func(msgs []Message, tools []AgentTool) <-chan StreamChunk
+
+// EscalationReason tags why an escalation fired so the consumer can format
+// the message consistently.
+type EscalationReason string
+
+const (
+	EscalationStuck      EscalationReason = "stuck"       // no phase change for too many ticks
+	EscalationMaxRetries EscalationReason = "max_retries" // PhaseError seen too many times for one task
+)
+
+// Escalator is a callback invoked when an agent can't make forward progress.
+// The consumer should post a heads-up message to the team. Non-blocking from
+// the loop's perspective — the loop calls it while holding no locks.
+type Escalator func(agentSlug, taskID string, reason EscalationReason, detail string)
