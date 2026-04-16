@@ -6415,7 +6415,15 @@ function openAgentWizard(existingAgent) {
     { key: 'name', label: 'Name', type: 'input', placeholder: 'e.g. DevOps Engineer' },
     { key: 'role', label: 'Role', type: 'input', placeholder: 'e.g. CI/CD, infrastructure, monitoring' },
     { key: 'expertise', label: 'Expertise (comma-separated)', type: 'input', placeholder: 'e.g. Docker, Kubernetes, Terraform' },
-    { key: 'personality', label: 'Personality', type: 'textarea', placeholder: 'Describe how this agent should behave...' }
+    { key: 'personality', label: 'Personality', type: 'textarea', placeholder: 'Describe how this agent should behave...' },
+    { key: 'provider', label: 'Provider', type: 'select', options: [
+      { value: '', label: 'Default (install-wide)' },
+      { value: 'claude-code', label: 'Claude Code' },
+      { value: 'codex', label: 'Codex' },
+      { value: 'openclaw', label: 'OpenClaw' }
+    ] },
+    { key: 'model', label: 'Model (optional)', type: 'input', placeholder: 'e.g. claude-sonnet-4.6 or openai-codex/gpt-5.4' },
+    { key: 'openclaw_session_key', label: 'OpenClaw session key (optional — leave blank to auto-create)', type: 'input', placeholder: 'agent:xyz:label (only when Provider = OpenClaw)' }
   ];
   var inputs = {};
 
@@ -6428,15 +6436,29 @@ function openAgentWizard(existingAgent) {
     var inp;
     if (f.type === 'textarea') {
       inp = document.createElement('textarea');
+    } else if (f.type === 'select') {
+      inp = document.createElement('select');
+      (f.options || []).forEach(function(o) {
+        var opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        inp.appendChild(opt);
+      });
     } else {
       inp = document.createElement('input');
       inp.type = 'text';
     }
-    inp.placeholder = f.placeholder || '';
+    if (f.placeholder) inp.placeholder = f.placeholder;
     if (f.disabled) inp.disabled = true;
     if (isEdit) {
       if (f.key === 'expertise') {
         inp.value = (existingAgent.expertise || []).join(', ');
+      } else if (f.key === 'provider') {
+        inp.value = (existingAgent.provider && existingAgent.provider.kind) || '';
+      } else if (f.key === 'model') {
+        inp.value = (existingAgent.provider && existingAgent.provider.model) || '';
+      } else if (f.key === 'openclaw_session_key') {
+        inp.value = (existingAgent.provider && existingAgent.provider.openclaw && existingAgent.provider.openclaw.session_key) || '';
       } else {
         inp.value = existingAgent[f.key] || '';
       }
@@ -6445,6 +6467,14 @@ function openAgentWizard(existingAgent) {
     fieldDiv.appendChild(inp);
     formSection.appendChild(fieldDiv);
   });
+
+  // Only show the OpenClaw session-key field when provider = openclaw.
+  function syncOpenclawFieldVisibility() {
+    var isOC = inputs.provider.value === 'openclaw';
+    inputs.openclaw_session_key.parentNode.style.display = isOC ? '' : 'none';
+  }
+  inputs.provider.addEventListener('change', syncOpenclawFieldVisibility);
+  syncOpenclawFieldVisibility();
   card.appendChild(formSection);
   if (!isEdit) formSection.style.display = 'none';
 
@@ -6483,15 +6513,34 @@ function openAgentWizard(existingAgent) {
       personality: personality
     };
 
+    // Per-agent provider selection. Empty provider means "use install default."
+    var providerKind = (inputs.provider.value || '').trim();
+    var modelValue = (inputs.model.value || '').trim();
+    if (providerKind || modelValue) {
+      var providerPayload = { kind: providerKind, model: modelValue };
+      if (providerKind === 'openclaw') {
+        var sessionKey = (inputs.openclaw_session_key.value || '').trim();
+        providerPayload.openclaw = sessionKey ? { session_key: sessionKey } : {};
+      }
+      body.provider = providerPayload;
+    }
+
     WuphfAPI.post('/office-members', body)
       .then(function() {
         overlay.remove();
         showNotice(isEdit ? 'Agent updated' : 'Agent created', 'success');
+        var providerState = body.provider || null;
         if (isEdit) {
           var ag = AGENTS.find(function(a) { return a.slug === slug; });
-          if (ag) { ag.name = name; ag.role = role; ag.expertise = expertise; ag.personality = personality; }
+          if (ag) {
+            ag.name = name;
+            ag.role = role;
+            ag.expertise = expertise;
+            ag.personality = personality;
+            if (providerState) ag.provider = providerState;
+          }
         } else {
-          AGENTS.push({ slug: slug, name: name, role: role, expertise: expertise, personality: personality, emoji: '', checked: true, type: 'specialist' });
+          AGENTS.push({ slug: slug, name: name, role: role, expertise: expertise, personality: personality, emoji: '', checked: true, type: 'specialist', provider: providerState });
         }
         renderSidebarAgents();
       })

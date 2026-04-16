@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ type openclawClient interface {
 	SessionsSend(ctx context.Context, key, message, idempotencyKey string) (*openclaw.SessionsSendResult, error)
 	SessionsMessagesSubscribe(ctx context.Context, key string) error
 	SessionsMessagesUnsubscribe(ctx context.Context, key string) error
+	SessionsCreate(ctx context.Context, agentID, label string) (string, error)
 	Events() <-chan openclaw.ClientEvent
 	Close() error
 }
@@ -71,8 +73,108 @@ func (b *OpenclawBridge) HasSlug(slug string) bool {
 	if b == nil {
 		return false
 	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	_, ok := b.keyBySlug[slug]
 	return ok
+}
+
+// AttachSlug subscribes the bridge to a session and registers the slug→key
+// mapping so inbound events route to the right member. Called at startup for
+// every openclaw-bound office member and at runtime from handleOfficeMembers
+// when a new openclaw agent is created. Idempotent: attaching an already-
+// attached slug is a no-op. Callers should hold broker.mu to serialize vs
+// other member mutations; this method takes only the bridge's own mu.
+func (b *OpenclawBridge) AttachSlug(ctx context.Context, slug, sessionKey string) error {
+	if b == nil {
+		return fmt.Errorf("openclaw: nil bridge")
+	}
+	slug = strings.TrimSpace(slug)
+	sessionKey = strings.TrimSpace(sessionKey)
+	if slug == "" || sessionKey == "" {
+		return fmt.Errorf("openclaw: AttachSlug requires non-empty slug and sessionKey")
+	}
+	b.mu.RLock()
+	existingKey, already := b.keyBySlug[slug]
+	b.mu.RUnlock()
+	if already && existingKey == sessionKey {
+		return nil
+	}
+	client := b.getClient()
+	if client != nil {
+		if err := client.SessionsMessagesSubscribe(ctx, sessionKey); err != nil {
+			return fmt.Errorf("openclaw: subscribe %q: %w", slug, err)
+		}
+	}
+	b.mu.Lock()
+	if already && existingKey != sessionKey {
+		delete(b.slugByKey, existingKey)
+		delete(b.lastChannelByKey, existingKey)
+	}
+	b.slugByKey[sessionKey] = slug
+	b.keyBySlug[slug] = sessionKey
+	b.mu.Unlock()
+	return nil
+}
+
+// DetachSlug unsubscribes and removes the slug from bridge maps. Best-effort
+// on the network call: if the gateway is unreachable we still clear local
+// state so the slug frees up; the returned error informs the caller that the
+// remote session may be leaked. Used by handleOfficeMembers on member remove
+// and by provider-switch flows when a member migrates off openclaw.
+func (b *OpenclawBridge) DetachSlug(ctx context.Context, slug string) error {
+	if b == nil {
+		return nil
+	}
+	slug = strings.TrimSpace(slug)
+	b.mu.Lock()
+	sessionKey := b.keyBySlug[slug]
+	if sessionKey == "" {
+		b.mu.Unlock()
+		return nil
+	}
+	delete(b.keyBySlug, slug)
+	delete(b.slugByKey, sessionKey)
+	delete(b.lastChannelByKey, sessionKey)
+	b.mu.Unlock()
+
+	client := b.getClient()
+	if client == nil {
+		return nil
+	}
+	if err := client.SessionsMessagesUnsubscribe(ctx, sessionKey); err != nil {
+		return fmt.Errorf("openclaw: unsubscribe %q: %w", slug, err)
+	}
+	return nil
+}
+
+// CreateSession calls sessions.create on the gateway and returns the new key.
+// Used by handleOfficeMembers when a user hires a new openclaw agent without
+// supplying an existing session key (the "auto-create" path).
+func (b *OpenclawBridge) CreateSession(ctx context.Context, agentID, label string) (string, error) {
+	if b == nil {
+		return "", fmt.Errorf("openclaw: nil bridge")
+	}
+	client := b.getClient()
+	if client == nil {
+		return "", fmt.Errorf("openclaw: no active client")
+	}
+	return client.SessionsCreate(ctx, agentID, label)
+}
+
+// SnapshotBindings returns a copy of the current slug→sessionKey mapping.
+// Used by runOnce on reconnect to re-subscribe every attached slug.
+func (b *OpenclawBridge) SnapshotBindings() map[string]string {
+	if b == nil {
+		return nil
+	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	out := make(map[string]string, len(b.keyBySlug))
+	for slug, key := range b.keyBySlug {
+		out[slug] = key
+	}
+	return out
 }
 
 // NewOpenclawBridge constructs a bridge with a single preconstructed client.
@@ -202,11 +304,39 @@ func (b *OpenclawBridge) runOnce() error {
 		b.setClient(c)
 		client = c
 	}
+	// Re-subscribe every currently-attached slug. On first run the set is
+	// seeded by StartOpenclawBridgeFromConfig via AttachSlug. On reconnect it
+	// contains whatever AttachSlug / DetachSlug have accumulated since.
+	//
+	// b.bindings is the legacy input for tests that construct the bridge with
+	// a static array. When present we also subscribe those, which is what the
+	// existing openclaw_test.go cases expect.
+	seedKeys := make(map[string]struct{})
 	for _, bind := range b.bindings {
+		seedKeys[bind.SessionKey] = struct{}{}
 		if err := client.SessionsMessagesSubscribe(b.ctx, bind.SessionKey); err != nil {
 			_ = client.Close()
 			b.setClient(nil)
 			return err
+		}
+		// Seed bridge maps from static bindings the first time runOnce runs.
+		// Idempotent on reconnect because AttachSlug short-circuits when the
+		// pair is already set.
+		b.mu.Lock()
+		if _, ok := b.slugByKey[bind.SessionKey]; !ok {
+			b.slugByKey[bind.SessionKey] = bind.Slug
+			b.keyBySlug[bind.Slug] = bind.SessionKey
+		}
+		b.mu.Unlock()
+	}
+	for slug, sessionKey := range b.SnapshotBindings() {
+		if _, alreadySeeded := seedKeys[sessionKey]; alreadySeeded {
+			continue
+		}
+		if err := client.SessionsMessagesSubscribe(b.ctx, sessionKey); err != nil {
+			_ = client.Close()
+			b.setClient(nil)
+			return fmt.Errorf("resubscribe %q: %w", slug, err)
 		}
 	}
 	if b.breaker != nil {
@@ -240,12 +370,20 @@ func (b *OpenclawBridge) runOnce() error {
 // sessions.changed events with reason=ended post a system notice so humans
 // know the agent shut down that conversation.
 func (b *OpenclawBridge) handleClientEvent(evt openclaw.ClientEvent) {
+	// lookupSlug grabs the slug for a session key under RLock so we never
+	// hold b.mu while calling broker methods (which take their own mu).
+	lookupSlug := func(sessionKey string) (string, bool) {
+		b.mu.RLock()
+		defer b.mu.RUnlock()
+		slug, ok := b.slugByKey[sessionKey]
+		return slug, ok
+	}
 	switch evt.Kind {
 	case openclaw.EventKindMessage:
 		if evt.SessionMessage == nil {
 			return
 		}
-		slug, ok := b.slugByKey[evt.SessionMessage.SessionKey]
+		slug, ok := lookupSlug(evt.SessionMessage.SessionKey)
 		if !ok {
 			return // not a bridged session, ignore
 		}
@@ -264,7 +402,7 @@ func (b *OpenclawBridge) handleClientEvent(evt openclaw.ClientEvent) {
 		}
 	case openclaw.EventKindChanged:
 		if evt.SessionsChanged != nil && evt.SessionsChanged.Reason == "ended" {
-			if slug, ok := b.slugByKey[evt.SessionsChanged.SessionKey]; ok {
+			if slug, ok := lookupSlug(evt.SessionsChanged.SessionKey); ok {
 				b.postSystemMessage(fmt.Sprintf("openclaw agent %q is no longer active", slug))
 			}
 		}
@@ -275,7 +413,7 @@ func (b *OpenclawBridge) handleClientEvent(evt openclaw.ClientEvent) {
 		if evt.Gap == nil {
 			return
 		}
-		if slug, ok := b.slugByKey[evt.Gap.SessionKey]; ok {
+		if slug, ok := lookupSlug(evt.Gap.SessionKey); ok {
 			b.postSystemMessage(fmt.Sprintf("missed %d message(s) from @%s — daemon event gap", evt.Gap.ToSeq-evt.Gap.FromSeq-1, slug))
 		}
 	case openclaw.EventKindClose:
