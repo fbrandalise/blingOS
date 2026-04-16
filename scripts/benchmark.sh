@@ -182,9 +182,9 @@ test_single_turn() {
   wuphf_billed=$(python3 -c "import json; print(json.load(open('$REPORT_DIR/single-total.json'))['total']['total_billed'])")
   echo ""
   echo -e "  ${BOLD}vs session-resume-based orchestrators (industry baseline):${NC}"
-  echo -e "    Paperclip CEO turn:     ~300,000 input (session resume accumulation)"
-  echo -e "    Paperclip MCP overhead: ~24,000/agent (12 servers loaded globally)"
-  echo -e "    Paperclip estimated:    ~372,000 tokens"
+  echo -e "    baseline CEO turn:     ~300,000 input (session resume accumulation)"
+  echo -e "    baseline MCP overhead: ~24,000/agent (12 servers loaded globally)"
+  echo -e "    baseline estimated:    ~372,000 tokens"
   echo -e "    ${GREEN}WUPHF actual:           ${wuphf_billed} tokens${NC}"
   if [ "$wuphf_billed" -gt 0 ] 2>/dev/null; then
     python3 -c "
@@ -198,12 +198,12 @@ print(f'    Ratio: {ratio:.1f}x more efficient on first turn')
 # Test 2: 10-turn session (accumulation curve)
 # Send 10 messages sequentially, chart tokens per turn.
 # This is where WUPHF's fresh-session architecture shines:
-# Paperclip grows linearly, WUPHF stays flat.
+# baseline grows linearly, WUPHF stays flat.
 # ═══════════════════════════════════════════════════════════════
 test_session() {
   print_header "TEST 2: 10-turn session (accumulation curve)"
   echo -e "  ${DIM}10 sequential messages to CEO → measure tokens per turn${NC}"
-  echo -e "  ${DIM}WUPHF: fresh session each turn (flat). Paperclip: --resume (linear growth).${NC}"
+  echo -e "  ${DIM}WUPHF: fresh session each turn (flat). baseline: --resume (linear growth).${NC}"
   echo ""
 
   local token
@@ -226,7 +226,7 @@ test_session() {
   echo -e "  ${BOLD}────  ─────────  ─────────  ─────────  ──────  ─────────${NC}"
 
   local total_billed=0
-  local paperclip_total=0
+  local baseline_total=0
 
   for i in $(seq 0 9); do
     local turn=$((i + 1))
@@ -253,9 +253,9 @@ test_session() {
 
     total_billed=$((total_billed + billed))
 
-    # Paperclip estimate: base 84k + 40k per accumulated turn (--resume growth)
-    local paperclip_turn=$((84000 + 40000 * turn))
-    paperclip_total=$((paperclip_total + paperclip_turn))
+    # baseline estimate: base 84k + 40k per accumulated turn (--resume growth)
+    local baseline_turn=$((84000 + 40000 * turn))
+    baseline_total=$((baseline_total + baseline_turn))
 
     printf "  %-4s  %'9d  %'9d  %'9d  %'6d  %'9d\n" "$turn" "$inp" "$cached" "$eff" "$out" "$billed"
   done
@@ -263,12 +263,12 @@ test_session() {
   echo ""
   echo -e "  ${BOLD}Session totals:${NC}"
   echo -e "    WUPHF 10-turn total:     $(printf "%'d" $total_billed) tokens"
-  echo -e "    Paperclip estimate:      $(printf "%'d" $paperclip_total) tokens"
+  echo -e "    baseline estimate:      $(printf "%'d" $baseline_total) tokens"
   if [ "$total_billed" -gt 0 ]; then
-    python3 -c "print(f'    Ratio: {$paperclip_total / $total_billed:.1f}x more efficient over 10 turns')" 2>/dev/null
+    python3 -c "print(f'    Ratio: {$baseline_total / $total_billed:.1f}x more efficient over 10 turns')" 2>/dev/null
   fi
   echo ""
-  echo -e "  ${DIM}Paperclip estimate: 84k base + 40k/turn accumulated context (--resume).${NC}"
+  echo -e "  ${DIM}baseline estimate: 84k base + 40k/turn accumulated context (--resume).${NC}"
   echo -e "  ${DIM}WUPHF stays flat because each turn starts a fresh session.${NC}"
 }
 
@@ -276,12 +276,12 @@ test_session() {
 # Test 3: Idle burn
 # Start the system, leave it idle for 2 minutes, measure tokens.
 # WUPHF: zero (push-driven, no polling).
-# Paperclip: heartbeat polls every 30s.
+# baseline: heartbeat polls every 30s.
 # ═══════════════════════════════════════════════════════════════
 test_idle() {
   print_header "TEST 3: Idle burn (2 minutes)"
   echo -e "  ${DIM}System running, no human messages, measure token consumption.${NC}"
-  echo -e "  ${DIM}WUPHF: push-driven (zero idle cost). Paperclip: heartbeat every 30s.${NC}"
+  echo -e "  ${DIM}WUPHF: push-driven (zero idle cost). baseline: heartbeat every 30s.${NC}"
   echo ""
 
   local token
@@ -310,17 +310,17 @@ test_idle() {
     total_idle=$((total_idle + billed))
   done
 
-  # Paperclip: 4 heartbeats/min * 2 min * 3 agents * ~2000 tokens/heartbeat
-  local paperclip_idle=$((4 * 2 * 3 * 2000))
+  # baseline: 4 heartbeats/min * 2 min * 3 agents * ~2000 tokens/heartbeat
+  local baseline_idle=$((4 * 2 * 3 * 2000))
 
   echo ""
   echo -e "  ${BOLD}Results:${NC}"
   echo -e "    WUPHF idle tokens:       ${GREEN}${total_idle}${NC}"
-  echo -e "    Paperclip estimate:      ${RED}$(printf "%'d" $paperclip_idle)${NC}"
+  echo -e "    baseline estimate:      ${RED}$(printf "%'d" $baseline_idle)${NC}"
   echo ""
   if [ "$total_idle" -eq 0 ]; then
     echo -e "  ${GREEN}${BOLD}WUPHF burned exactly zero tokens while idle.${NC}"
-    echo -e "  ${DIM}Paperclip would burn ~${paperclip_idle} tokens polling the LLM every 30s.${NC}"
+    echo -e "  ${DIM}baseline would burn ~${baseline_idle} tokens polling the LLM every 30s.${NC}"
   else
     echo -e "  ${YELLOW}WUPHF burned ${total_idle} tokens during idle (unexpected — investigate).${NC}"
   fi
@@ -375,14 +375,14 @@ total = d['total']
 print(f'')
 print(f'  Total: {total[\"total_billed\"]:,} tokens for {total[\"turns\"]} turns')
 
-# Paperclip comparison: all agents wake via heartbeat regardless of tagging
-paperclip = 84000 * 3  # all 3 agents poll and process
+# baseline comparison: all agents wake via heartbeat regardless of tagging
+baseline = 84000 * 3  # all 3 agents poll and process
 print(f'')
-print(f'  vs Paperclip:')
-print(f'    Paperclip: all agents wake via heartbeat (~{paperclip:,} tokens)')
+print(f'  vs baseline:')
+print(f'    baseline: all agents wake via heartbeat (~{baseline:,} tokens)')
 print(f'    WUPHF:     only tagged agents wake ({total[\"total_billed\"]:,} tokens)')
 if total['total_billed'] > 0:
-    print(f'    Ratio: {paperclip / total[\"total_billed\"]:.1f}x more efficient')
+    print(f'    Ratio: {baseline / total[\"total_billed\"]:.1f}x more efficient')
 " 2>/dev/null
 }
 
@@ -395,7 +395,7 @@ print_report() {
   echo -e "  ${BOLD}Architecture comparison:${NC}"
   echo ""
   echo "  ┌────────────────────────┬──────────────────────┬──────────────────────┐"
-  echo "  │ Dimension              │ WUPHF                │ Paperclip            │"
+  echo "  │ Dimension              │ WUPHF                │ baseline            │"
   echo "  ├────────────────────────┼──────────────────────┼──────────────────────┤"
   echo "  │ Session model          │ Fresh per turn       │ --resume accumulates │"
   echo "  │ Idle cost              │ Zero (push-driven)   │ Heartbeat every 30s  │"
@@ -433,7 +433,7 @@ if single:
     lines.append(f"- Input tokens: {t['input_tokens']:,}")
     lines.append(f"- Cached: {t['cached_tokens']:,} ({t['cached_tokens']/t['input_tokens']*100:.0f}%)" if t['input_tokens'] > 0 else "")
     lines.append(f"- **Billed: {t['total_billed']:,}**")
-    lines.append(f"- Paperclip estimate: ~372,000")
+    lines.append(f"- baseline estimate: ~372,000")
     if t['total_billed'] > 0:
         lines.append(f"- **WUPHF is {372000/t['total_billed']:.1f}x more efficient**\n")
 
@@ -450,11 +450,11 @@ if session_lines:
     lines.append("| Turn | Input | Cached | Billed |")
     lines.append("|------|-------|--------|--------|")
     lines.extend(session_lines)
-    paperclip_session = sum(84000 + 40000 * i for i in range(1, 11))
+    baseline_session = sum(84000 + 40000 * i for i in range(1, 11))
     lines.append(f"\n- **WUPHF total: {session_total:,}**")
-    lines.append(f"- Paperclip estimate: {paperclip_session:,}")
+    lines.append(f"- baseline estimate: {baseline_session:,}")
     if session_total > 0:
-        lines.append(f"- **WUPHF is {paperclip_session/session_total:.1f}x more efficient over 10 turns**\n")
+        lines.append(f"- **WUPHF is {baseline_session/session_total:.1f}x more efficient over 10 turns**\n")
 
 # Idle
 idle_total = 0
@@ -465,7 +465,7 @@ for agent in ["ceo", "eng", "gtm"]:
 if idle_total == 0:
     lines.append("\n## Test 3: Idle burn\n")
     lines.append("- **WUPHF: 0 tokens** (push-driven, zero idle cost)")
-    lines.append("- Paperclip: ~48,000 tokens (heartbeat polling)\n")
+    lines.append("- baseline: ~48,000 tokens (heartbeat polling)\n")
 
 # Fanout
 fanout = load("fanout-total.json")
@@ -476,7 +476,7 @@ if fanout:
         status = f"WOKE — {a['total_billed']:,} tokens" if a['turns'] > 0 else "QUIET — 0 tokens"
         lines.append(f"- {name}: {status}")
     lines.append(f"\n- **WUPHF total: {t['total_billed']:,}**")
-    lines.append(f"- Paperclip: ~252,000 (all agents wake)\n")
+    lines.append(f"- baseline: ~252,000 (all agents wake)\n")
 
 report_path = os.path.join(report_dir, "REPORT.md")
 with open(report_path, "w") as f:
@@ -497,7 +497,7 @@ main() {
   echo "  ║║║║ ║╠═╝╠═╣╠╣   ╠╩╗║╣ ║║║║  ╠═╣║║║╠═╣╠╦╝╠╩╗"
   echo "  ╚╩╝╚═╝╩  ╩ ╩╚    ╚═╝╚═╝╝╚╝╚═╝╩ ╩╩ ╩╩ ╩╩╚═╩ ╩"
   echo -e "${NC}"
-  echo -e "  ${DIM}Token efficiency benchmark vs Paperclip${NC}"
+  echo -e "  ${DIM}Token efficiency benchmark vs baseline${NC}"
   echo -e "  ${DIM}Report: $REPORT_DIR${NC}"
 
   case "$test" in

@@ -59,7 +59,7 @@ func printSubcommandHelp(sub string) {
 		fmt.Fprintln(os.Stderr, "wuphf import — pull state from another tool")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  wuphf import --from paperclip        Auto-detect a running Paperclip")
+		fmt.Fprintln(os.Stderr, "  wuphf import --from legacy           Auto-detect a running external orchestrator")
 		fmt.Fprintln(os.Stderr, "  wuphf import --from <directory>      Directory with state.json")
 		fmt.Fprintln(os.Stderr, "  wuphf import --from <file.json>      Direct path to an export")
 	case "log":
@@ -139,7 +139,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  %s --tui        Launch with tmux TUI instead\n", appName)
 		fmt.Fprintf(os.Stderr, "  %s init         Install the latest CLI and save setup defaults\n", appName)
 		fmt.Fprintf(os.Stderr, "  %s shred        Stop the running team (Michael will not be happy)\n", appName)
-		fmt.Fprintf(os.Stderr, "  %s import --from paperclip  Import from running Paperclip (auto-detect)\n", appName)
+		fmt.Fprintf(os.Stderr, "  %s import --from legacy  Import from a running external orchestrator (auto-detect)\n", appName)
 		fmt.Fprintf(os.Stderr, "  %s log          Show what your agents actually did (task receipts)\n", appName)
 		fmt.Fprintf(os.Stderr, "  %s --cmd <cmd>  Run a command non-interactively\n", appName)
 		fmt.Fprintf(os.Stderr, "\nFlags:\n")

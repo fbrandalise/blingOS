@@ -3,7 +3,7 @@
 ## Product Context
 - **What this is:** The marketing/landing website for WUPHF — an open-source AI agent office tool where an AI team (CEO, PM, engineers, designer) works visibly in a shared office, claimable via one terminal command.
 - **Who it's for:** Developers and technical founders who want an AI team that works in the open rather than behind an API.
-- **Space/industry:** AI developer tools / agent frameworks. Peers: Paperclip, naive.ai, Claude Code, Codex CLI.
+- **Space/industry:** AI developer tools / agent frameworks.
 - **Project type:** Isometric pixel-art marketing site. The website IS the product experience — not a description of it.
 
 ---

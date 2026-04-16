@@ -13,9 +13,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Paperclip state types (input format — JSON file path)
+// external orchestrator state types (input format — JSON file path)
 
-type paperclipAgent struct {
+type legacyAgent struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Role    string `json:"role"`
@@ -23,28 +23,28 @@ type paperclipAgent struct {
 	Status  string `json:"status"`
 }
 
-type paperclipCompany struct {
+type legacyCompany struct {
 	ID     string           `json:"id"`
 	Name   string           `json:"name"`
-	Agents []paperclipAgent `json:"agents"`
+	Agents []legacyAgent `json:"agents"`
 }
 
-type paperclipIssue struct {
+type legacyIssue struct {
 	ID         string `json:"id"`
 	Title      string `json:"title"`
 	Status     string `json:"status"`
 	AssigneeID string `json:"assignee_id"`
 }
 
-type paperclipBudget struct {
+type legacyBudget struct {
 	TotalUSD float64 `json:"total_usd"`
 	SpentUSD float64 `json:"spent_usd"`
 }
 
-type paperclipState struct {
-	Companies []paperclipCompany `json:"companies"`
-	Issues    []paperclipIssue   `json:"issues"`
-	Budget    *paperclipBudget   `json:"budget"`
+type legacyState struct {
+	Companies []legacyCompany `json:"companies"`
+	Issues    []legacyIssue   `json:"issues"`
+	Budget    *legacyBudget   `json:"budget"`
 }
 
 // WUPHF broker state types (output format, mirrors internal/team unexported structs)
@@ -86,13 +86,13 @@ type importedBrokerState struct {
 
 func runImport(args []string) {
 	fs := flag.NewFlagSet("import", flag.ExitOnError)
-	fromPath := fs.String("from", "", "Path to Paperclip data directory, a .json export file, or \"paperclip\" to auto-detect")
-	port := fs.Int("port", 0, "Override Paperclip's Postgres port (default: 54329)")
+	fromPath := fs.String("from", "", "Path to external orchestrator data directory, a .json export file, or \"legacy\" to auto-detect")
+	port := fs.Int("port", 0, "Override external orchestrator's Postgres port (default: 54329)")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s import --from <source>\n\n", appName)
-		fmt.Fprintf(os.Stderr, "Import Paperclip state into WUPHF. No export step required.\n\n")
+		fmt.Fprintf(os.Stderr, "Import external orchestrator state into WUPHF. No export step required.\n\n")
 		fmt.Fprintf(os.Stderr, "Sources:\n")
-		fmt.Fprintf(os.Stderr, "  paperclip         Auto-connect to a running Paperclip instance\n")
+		fmt.Fprintf(os.Stderr, "  legacy         Auto-connect to a running external orchestrator instance\n")
 		fmt.Fprintf(os.Stderr, "  <directory>       Directory containing state.json or export.json\n")
 		fmt.Fprintf(os.Stderr, "  <file.json>       Direct path to a JSON export file\n\n")
 		fs.PrintDefaults()
@@ -108,8 +108,8 @@ func runImport(args []string) {
 	var agentCount, taskCount int
 	var err error
 
-	if strings.ToLower(strings.TrimSpace(*fromPath)) == "paperclip" {
-		state, agentCount, taskCount, err = importFromPaperclipDB(*port)
+	if strings.ToLower(strings.TrimSpace(*fromPath)) == "legacy" {
+		state, agentCount, taskCount, err = importFromexternal orchestratorDB(*port)
 	} else {
 		state, agentCount, taskCount, err = importFromJSONFile(*fromPath)
 	}
@@ -142,29 +142,29 @@ func runImport(args []string) {
 	}
 
 	source := *fromPath
-	if strings.ToLower(strings.TrimSpace(*fromPath)) == "paperclip" {
-		source = "Paperclip"
+	if strings.ToLower(strings.TrimSpace(*fromPath)) == "legacy" {
+		source = "external orchestrator"
 	}
 	fmt.Printf("Imported %d agents, %d tasks from %s. Run wuphf to launch.\n", agentCount, taskCount, source)
 }
 
-// importFromPaperclipDB connects to Paperclip's embedded Postgres and reads
-// agents and issues directly. Paperclip must be running.
-func importFromPaperclipDB(portOverride int) (importedBrokerState, int, int, error) {
+// importFromexternal orchestratorDB connects to external orchestrator's embedded Postgres and reads
+// agents and issues directly. external orchestrator must be running.
+func importFromexternal orchestratorDB(portOverride int) (importedBrokerState, int, int, error) {
 	port := 54329
 	if portOverride > 0 {
 		port = portOverride
 	}
 
-	// Try to read Paperclip config for a custom port
+	// Try to read external orchestrator config for a custom port
 	if portOverride == 0 {
-		if p, ok := readPaperclipPort(); ok {
+		if p, ok := readexternal orchestratorPort(); ok {
 			port = p
 		}
 	}
 
 	connStr := fmt.Sprintf("postgres://postgres:postgres@localhost:%d/postgres?sslmode=disable", port)
-	fmt.Printf("Connecting to Paperclip (localhost:%d)...\n", port)
+	fmt.Printf("Connecting to external orchestrator (localhost:%d)...\n", port)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -172,9 +172,9 @@ func importFromPaperclipDB(portOverride int) (importedBrokerState, int, int, err
 	conn, err := pgx.Connect(ctx, connStr)
 	if err != nil {
 		return importedBrokerState{}, 0, 0, fmt.Errorf(
-			"could not connect to Paperclip Postgres (localhost:%d): %v\n\n"+
-				"Make sure Paperclip is running before importing.\n"+
-				"If Paperclip uses a different port, pass --port <number>.",
+			"could not connect to external orchestrator Postgres (localhost:%d): %v\n\n"+
+				"Make sure external orchestrator is running before importing.\n"+
+				"If external orchestrator uses a different port, pass --port <number>.",
 			port, err,
 		)
 	}
@@ -204,7 +204,7 @@ func importFromPaperclipDB(portOverride int) (importedBrokerState, int, int, err
 	}
 
 	if len(companies) == 0 {
-		return importedBrokerState{}, 0, 0, fmt.Errorf("no companies found in Paperclip database")
+		return importedBrokerState{}, 0, 0, fmt.Errorf("no companies found in external orchestrator database")
 	}
 
 	// Collect all company IDs for filtering
@@ -323,21 +323,21 @@ func importFromPaperclipDB(portOverride int) (importedBrokerState, int, int, err
 	return state, len(members), len(tasks), nil
 }
 
-// readPaperclipPort reads the Paperclip config file to find a custom Postgres port.
-func readPaperclipPort() (int, bool) {
+// readexternal orchestratorPort reads the external orchestrator config file to find a custom Postgres port.
+func readexternal orchestratorPort() (int, bool) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return 0, false
 	}
-	paperclipHome := os.Getenv("PAPERCLIP_HOME")
-	if paperclipHome == "" {
-		paperclipHome = filepath.Join(home, ".paperclip")
+	legacyHome := os.Getenv("PAPERCLIP_HOME")
+	if legacyHome == "" {
+		legacyHome = filepath.Join(home, ".legacy")
 	}
 	instanceID := os.Getenv("PAPERCLIP_INSTANCE_ID")
 	if instanceID == "" {
 		instanceID = "default"
 	}
-	configPath := filepath.Join(paperclipHome, "instances", instanceID, "config.json")
+	configPath := filepath.Join(legacyHome, "instances", instanceID, "config.json")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return 0, false
@@ -356,7 +356,7 @@ func readPaperclipPort() (int, bool) {
 	return 0, false
 }
 
-// importFromJSONFile reads a Paperclip JSON export and converts it.
+// importFromJSONFile reads a external orchestrator JSON export and converts it.
 func importFromJSONFile(path string) (importedBrokerState, int, int, error) {
 	source, err := resolveSourcePath(path)
 	if err != nil {
@@ -366,7 +366,7 @@ func importFromJSONFile(path string) (importedBrokerState, int, int, error) {
 	if err != nil {
 		return importedBrokerState{}, 0, 0, fmt.Errorf("could not read %s: %w", source, err)
 	}
-	var pc paperclipState
+	var pc legacyState
 	if err := json.Unmarshal(data, &pc); err != nil {
 		return importedBrokerState{}, 0, 0, fmt.Errorf("invalid JSON in %s: %w", source, err)
 	}
@@ -392,8 +392,8 @@ func resolveSourcePath(path string) (string, error) {
 	return "", fmt.Errorf("directory %s does not contain state.json or export.json", path)
 }
 
-// convertToWUPHF transforms Paperclip JSON state into WUPHF broker state.
-func convertToWUPHF(pc paperclipState) (importedBrokerState, int, int) {
+// convertToWUPHF transforms external orchestrator JSON state into WUPHF broker state.
+func convertToWUPHF(pc legacyState) (importedBrokerState, int, int) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	var members []importedMember

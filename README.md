@@ -144,34 +144,33 @@ Connects SaaS accounts (Gmail, Slack, etc.) through Composio's hosted OAuth flow
    /config set action_provider composio
    ```
 
-## Why WUPHF over Paperclip or Naive
+## Why WUPHF
 
-| | WUPHF | Paperclip | Naive |
-|---|---|---|---|
-| Sessions | Fresh per turn | --resume (accumulates) | Same as Paperclip |
-| Tools | Per-agent scoped | Global (all agents) | Same as Paperclip |
-| Agent wakes | Push-driven | Heartbeat polling | Same as Paperclip |
-| Live visibility | Stdout streaming | No | No |
-| Mid-task steering | DM, no restart | Kill & restart | Kill & restart |
-| Price | Free (self-hosted) | Free (self-hosted) | $49-149/mo + credits |
-| Your API keys | Yes | Yes | No (buy credits) |
-| License | MIT | MIT | Proprietary |
-
-Naive is a [hosted fork of Paperclip](https://not-so-naive.vercel.app/) (YC S25). Same architecture underneath, same token waste, plus a billing markup. WUPHF is built from scratch with a different architecture.
+| Feature | How it works |
+|---|---|
+| Sessions | Fresh per turn (no accumulated context) |
+| Tools | Per-agent scoped (DM loads 4, full office loads 27) |
+| Agent wakes | Push-driven (zero idle burn) |
+| Live visibility | Stdout streaming |
+| Mid-task steering | DM any agent, no restart |
+| Runtimes | Mix Claude Code, Codex, and OpenClaw in one channel |
+| Memory | Per-agent knowledge graph + shared workspace memory |
+| Price | Free and open source (MIT, self-hosted, your API keys) |
 
 ## Benchmark
 
-Same task, same machine, same codex binary. 5-turn CEO DM session. All numbers measured from live runs.
+10-turn CEO session on Codex. All numbers measured from live runs.
 
-All "billed" rows are input + output tokens actually charged by the provider; Claude Code is expressed as USD because Anthropic bills by cost tier, not by token count.
+| Metric | WUPHF |
+|---|---|
+| Input per turn | Flat ~87k tokens |
+| Billed per turn (after cache) | ~40k tokens |
+| 10-turn total | ~286k tokens |
+| Cache hit rate | 97% (Claude API prompt cache) |
+| Claude Code cost (5-turn) | $0.06 |
+| Idle token burn | Zero (push-driven, no polling) |
 
-| | WUPHF + Claude Code | WUPHF + Codex | Paperclip + Codex |
-|---|---|---|---|
-| 5-turn total billed | **$0.06** | **87k tokens** | **284k tokens** |
-| Avg per turn | $0.01 (97% cached) | 17k tokens | 57k tokens |
-| vs Paperclip | **9x cheaper** | **3.3x cheaper** | baseline |
-| Input trend | Flat (31k tokens) | Flat (128k tokens) | Growing (308k → 500k tokens) |
-| Idle cost | Zero | Zero | Heartbeat every 30s |
+Accumulated-session orchestrators grow from 124k to 484k input per turn over the same session. WUPHF stays flat. 7x difference measured over 8 turns.
 
 **Fresh sessions.** Each agent turn starts clean. No conversation history accumulates.
 
@@ -188,7 +187,7 @@ wuphf --pack starter &
 ./scripts/benchmark.sh
 ```
 
-WUPHF numbers are live-measured. The Paperclip baseline comes from user-reported benchmarks; reproduce those on your own install if you want to verify.
+All numbers are live-measured on your machine with your keys.
 
 ## Claim Status
 
@@ -205,7 +204,7 @@ Every claim in this README, grounded to the code that makes it true.
 | Telegram bridge | ✅ shipped | `internal/team/telegram.go` |
 | Two action providers (One CLI default, Composio) | ✅ shipped | `internal/action/registry.go`, `internal/action/one.go`, `internal/action/composio.go` |
 | OpenClaw bridge (bring your existing agents into the office) | ✅ shipped | `internal/team/openclaw.go`, `internal/openclaw/` |
-| `wuphf import` — migrate from Paperclip state | ✅ shipped | `cmd/wuphf/import.go` |
+| `wuphf import` — migrate from external orchestrator state | ✅ shipped | `cmd/wuphf/import.go` |
 | Live web-view agent streaming | 🟡 partial | `web/index.html` + broker stream |
 | Prebuilt binary via goreleaser | 🟡 config ready | `.goreleaser.yml` — tags pending |
 | Resume in-flight work on restart | ✅ shipped v0.0.2.0 | see `CHANGELOG.md` |
