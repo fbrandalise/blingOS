@@ -1136,6 +1136,10 @@ func TestChannelDescriptionsAreVisibleButContentStaysRestricted(t *testing.T) {
 	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
 	defer func() { brokerStatePath = oldPathFn }()
 	b := NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("failed to start broker: %v", err)
+	}
+	defer b.Stop()
 	b.mu.Lock()
 	b.members = []officeMember{
 		{Slug: "ceo", Name: "CEO", Role: "CEO", BuiltIn: true},
@@ -1149,11 +1153,8 @@ func TestChannelDescriptionsAreVisibleButContentStaysRestricted(t *testing.T) {
 		Description: "Company-wide room",
 		Members:     []string{"ceo", "pm", "fe", "cmo"},
 	}}
+	b.normalizeLoadedStateLocked()
 	b.mu.Unlock()
-	if err := b.StartOnPort(0); err != nil {
-		t.Fatalf("failed to start broker: %v", err)
-	}
-	defer b.Stop()
 
 	base := fmt.Sprintf("http://%s", b.Addr())
 
@@ -1237,6 +1238,10 @@ func TestChannelUpdateMutatesDescriptionAndMembers(t *testing.T) {
 	defer func() { brokerStatePath = oldPathFn }()
 
 	b := NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("failed to start broker: %v", err)
+	}
+	defer b.Stop()
 	b.mu.Lock()
 	b.members = []officeMember{
 		{Slug: "ceo", Name: "CEO", Role: "CEO", BuiltIn: true},
@@ -1256,11 +1261,8 @@ func TestChannelUpdateMutatesDescriptionAndMembers(t *testing.T) {
 		Members:     []string{"ceo", "research-lead"},
 		Disabled:    []string{"scriptwriter"},
 	}}
+	b.normalizeLoadedStateLocked()
 	b.mu.Unlock()
-	if err := b.StartOnPort(0); err != nil {
-		t.Fatalf("failed to start broker: %v", err)
-	}
-	defer b.Stop()
 
 	base := fmt.Sprintf("http://%s", b.Addr())
 	updateBody, _ := json.Marshal(map[string]any{
