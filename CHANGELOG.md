@@ -2,6 +2,13 @@
 
 All notable changes to WUPHF will be documented in this file.
 
+## [0.0.5.2] - 2026-04-20
+
+### Fixed
+
+- **Pane spawn no longer races across concurrent WUPHF instances.** Two launches on the same machine used to share a hardcoded tmux socket (`wuphf`) and session name (`wuphf-team`). When a second launch ran `kill-session` between the first launch's `new-session` and `split-window`, tmux tore down the whole server and the first launch's split-window exited 1 with "no server running on /private/tmp/tmux-*/wuphf". That race is what pushed prod into the headless fallback message "Running in headless mode (spawn visible agents failed: spawn first agent: exit status 1). Install tmux and relaunch to use interactive Claude sessions on your normal subscription." even though tmux was installed and healthy. The socket and session names now carry a `-<port>` suffix on any non-default broker port — dev (7899), worktree launches, CI, or any custom `--broker-port` — so prod on the default port still uses the original `wuphf` / `wuphf-team` and concurrent instances can't trample each other. Backward compatible: default-port installs keep historical names.
+- **Pane spawn failures now carry the real tmux error.** `spawnVisibleAgents` used `.Run()` which threw away tmux's stderr, so the #general system message was limited to "exit status 1" with no hint of cause. Both split-window calls now use `CombinedOutput()` and append `(tmux: <stderr>)` to the wrapped error — e.g. `spawn first agent: exit status 1 (tmux: no server running on /private/tmp/tmux-501/wuphf)` — so the next failure diagnoses itself from the fallback message alone.
+
 ## [Unreleased] — `feat/llm-wiki`
 
 ### Added — LLM Wiki (Karpathy-pattern team memory)
@@ -30,6 +37,11 @@ All notable changes to WUPHF will be documented in this file.
 - New Go packages touched: `internal/team/wiki_git.go`, `wiki_worker.go`, `wiki_article.go`, `wiki_e2e_test.go` + tests; `internal/operations/wiki_materialize.go` + tests; additions to `internal/teammcp/server.go`, `internal/team/broker.go`, `internal/team/broker_onboarding.go`, `internal/config/config.go`. New env var `WUPHF_MEMORY_BACKEND` drives the tool-surface switch (matches the existing `WUPHF_CHANNEL` / `WUPHF_AGENT_SLUG` propagation pattern from broker to MCP subprocess).
 - 33+ new Go tests at 81.6% coverage on wiki files (`wiki_git.go` · `wiki_worker.go` · `wiki_article.go`). 80 new web tests at 90% coverage on `web/src/components/wiki/` and `web/src/lib/`. Cross-lane integration tests in `internal/team/wiki_e2e_test.go` exercise the full HTTP stack.
 - Full-repo `go test ./...` green across all 25 packages. `go test -race ./internal/team/... -run TestE2EWiki` clean.
+
+## [0.0.5.1] - 2026-04-20
+
+### Fixed
+- **Blueprint channel names no longer leak `{{command_slug}}` as literal text.** Onboarding blank-slate seeding now renders the `{{command_slug}}` template variable alongside `{{brand_name}}` and `{{brand_slug}}`, matching the sibling code paths in `internal/company/blueprints.go` and `internal/team/operation_bootstrap.go`. Default channels created from blueprint starter packs show a real command-room slug (e.g., `acme-co-command`) instead of `{{command-slug}}`.
 
 ## [0.0.5.0] - 2026-04-17
 
