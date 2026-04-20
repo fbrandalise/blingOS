@@ -57,6 +57,10 @@ export interface AppStore {
   // Onboarding
   onboardingComplete: boolean
   setOnboardingComplete: (v: boolean) => void
+
+  // Wiki
+  wikiPath: string | null
+  setWikiPath: (path: string | null) => void
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -101,4 +105,7 @@ export const useAppStore = create<AppStore>((set) => ({
 
   onboardingComplete: false,
   setOnboardingComplete: (v) => set({ onboardingComplete: v }),
+
+  wikiPath: null,
+  setWikiPath: (path) => set({ wikiPath: path }),
 }))
