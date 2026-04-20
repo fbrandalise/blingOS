@@ -140,7 +140,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-primary);
+  color: var(--text);
   margin: 0;
 }
 
@@ -175,14 +175,14 @@
 
 .template-from-scratch-btn:hover {
   border-color: var(--accent);
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .template-from-scratch-btn.selected {
   border-style: solid;
   border-color: var(--accent);
   background: var(--accent-bg);
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 .template-from-scratch-icon {
@@ -493,7 +493,7 @@
 .runtime-priority-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
   margin: 0 0 4px 0;
 }
 
@@ -545,7 +545,7 @@
 
 .runtime-priority-btn:not(:disabled):hover {
   border-color: var(--border-dark);
-  color: var(--text-primary);
+  color: var(--text);
 }
 
 /* ─── Task Textarea (Step 6) ─── */
@@ -641,7 +641,7 @@
 .task-suggestion-name {
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text);
   line-height: 1.4;
 }
 

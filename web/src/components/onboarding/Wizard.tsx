@@ -717,7 +717,7 @@ function SetupStep({
               fontSize: 13,
               fontWeight: 600,
               margin: '0 0 4px 0',
-              color: 'var(--text-primary)',
+              color: 'var(--text)',
             }}
           >
             API keys {hasInstalledSelection ? '(optional fallback)' : '(required)'}

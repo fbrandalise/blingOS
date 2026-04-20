@@ -312,7 +312,7 @@ function AgentPanelView({ agent, onClose }: AgentPanelViewProps) {
             className="btn btn-ghost btn-sm"
             onClick={handleRemove}
             disabled={removing}
-            style={{ color: 'var(--red, #dc2626)' }}
+            style={{ color: 'var(--red)' }}
           >
             {removing ? 'Removing...' : 'Remove agent'}
           </button>

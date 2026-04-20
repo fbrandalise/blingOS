@@ -263,7 +263,7 @@
   transition: transform 0.2s;
 }
 .agent-toggle input:checked + .agent-toggle-slider {
-  background: var(--green, #2fb344);
+  background: var(--accent);
 }
 .agent-toggle input:checked + .agent-toggle-slider::before {
   transform: translateX(18px);
