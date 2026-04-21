@@ -4,6 +4,7 @@ import type { PluggableList } from 'unified'
 import ArticleStatusBanner from './ArticleStatusBanner'
 import EntityBriefBar from './EntityBriefBar'
 import FactsOnFile from './FactsOnFile'
+import EntityRelatedPanel from './EntityRelatedPanel'
 import PlaybookExecutionLog from './PlaybookExecutionLog'
 import PlaybookSkillBadge from './PlaybookSkillBadge'
 import HatBar, { type HatBarTab } from './HatBar'
@@ -295,6 +296,9 @@ export default function WikiArticle({ path, catalog, onNavigate }: WikiArticlePr
         )}
         {entity && tab === 'article' && (
           <FactsOnFile kind={entity.kind} slug={entity.slug} />
+        )}
+        {entity && tab === 'article' && (
+          <EntityRelatedPanel kind={entity.kind} slug={entity.slug} />
         )}
         {playbook && tab === 'article' && (
           <PlaybookExecutionLog slug={playbook.slug} />
