@@ -225,6 +225,93 @@ func TestBrokerMessageSubscribersReceivePostedMessages(t *testing.T) {
 	}
 }
 
+func TestBrokerCanonicalizesLegacyDMSlugs(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	b := NewBroker()
+	if err := b.StartOnPort(0); err != nil {
+		t.Fatalf("failed to start broker: %v", err)
+	}
+	defer b.Stop()
+
+	base := fmt.Sprintf("http://%s", b.Addr())
+	postJSON := func(path string, payload map[string]any) *http.Response {
+		t.Helper()
+		body, _ := json.Marshal(payload)
+		req, _ := http.NewRequest(http.MethodPost, base+path, bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+b.Token())
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("POST %s failed: %v", path, err)
+		}
+		return resp
+	}
+
+	resp := postJSON("/channels/dm", map[string]any{
+		"members": []string{"human", "ceo"},
+		"type":    "direct",
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create dm status %d: %s", resp.StatusCode, raw)
+	}
+	var created struct {
+		Slug string `json:"slug"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create dm: %v", err)
+	}
+	wantSlug := channelDirectSlug("human", "ceo")
+	if created.Slug != wantSlug {
+		t.Fatalf("expected canonical slug %q, got %q", wantSlug, created.Slug)
+	}
+
+	msgResp := postJSON("/messages", map[string]any{
+		"from":    "human",
+		"channel": "dm-human-ceo",
+		"content": "hello ceo",
+	})
+	defer msgResp.Body.Close()
+	if msgResp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(msgResp.Body)
+		t.Fatalf("post legacy dm status %d: %s", msgResp.StatusCode, raw)
+	}
+	msgs := b.Messages()
+	if len(msgs) != 1 {
+		t.Fatalf("expected one message, got %d", len(msgs))
+	}
+	if msgs[0].Channel != wantSlug {
+		t.Fatalf("expected message to land in %q, got %q", wantSlug, msgs[0].Channel)
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, base+"/messages?channel=dm-human-ceo&viewer_slug=human", nil)
+	req.Header.Set("Authorization", "Bearer "+b.Token())
+	getResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET legacy dm failed: %v", err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(getResp.Body)
+		t.Fatalf("get legacy dm status %d: %s", getResp.StatusCode, raw)
+	}
+	var got struct {
+		Channel  string           `json:"channel"`
+		Messages []channelMessage `json:"messages"`
+	}
+	if err := json.NewDecoder(getResp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode get dm: %v", err)
+	}
+	if got.Channel != wantSlug || len(got.Messages) != 1 {
+		t.Fatalf("expected canonical channel %q with one message, got channel=%q messages=%d", wantSlug, got.Channel, len(got.Messages))
+	}
+}
+
 func TestRecordAgentUsageAttachesToCurrentTurnMessagesOnly(t *testing.T) {
 	b := NewBroker()
 	now := time.Now().UTC()

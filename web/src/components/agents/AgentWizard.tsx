@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { post, generateAgent } from '../../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 
-type Provider = 'claude' | 'openai' | 'gemini'
+type Provider = 'inherit' | 'claude-code' | 'codex'
 type WizardMode = 'describe' | 'manual'
 
 interface AgentFormData {
@@ -19,14 +19,14 @@ const INITIAL_FORM: AgentFormData = {
   slug: '',
   role: '',
   emoji: '',
-  provider: 'claude',
+  provider: 'inherit',
   expertise: '',
 }
 
 const PROVIDERS: { value: Provider; label: string }[] = [
-  { value: 'claude', label: 'Claude (Anthropic)' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'gemini', label: 'Gemini (Google)' },
+  { value: 'inherit', label: 'Default runtime' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'claude-code', label: 'Claude Code' },
 ]
 
 function slugify(name: string): string {
@@ -68,7 +68,7 @@ export function AgentWizard({ open, onClose, onCreated }: AgentWizardProps) {
         slug: generatedSlug,
         role: tmpl.role || '',
         emoji: tmpl.emoji || '',
-        provider: 'claude',
+        provider: 'inherit',
         expertise: (tmpl.expertise || []).join(', '),
       })
       setSlugEdited(generatedSlug.length > 0)
@@ -113,11 +113,12 @@ export function AgentWizard({ open, onClose, onCreated }: AgentWizardProps) {
 
     try {
       const body = {
+        action: 'create',
         slug: form.slug,
         name: form.name,
         role: form.role || undefined,
         emoji: form.emoji || undefined,
-        provider: form.provider,
+        provider: form.provider === 'inherit' ? undefined : { kind: form.provider },
         expertise: expertiseTags.length > 0 ? expertiseTags : undefined,
       }
 

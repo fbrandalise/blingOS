@@ -20,7 +20,7 @@ var (
 	headlessClaudeCommandContext = exec.CommandContext
 )
 
-func (l *Launcher) runHeadlessClaudeTurn(ctx context.Context, slug string, notification string) error {
+func (l *Launcher) runHeadlessClaudeTurn(ctx context.Context, slug string, notification string, channel ...string) error {
 	if _, err := headlessClaudeLookPath("claude"); err != nil {
 		return fmt.Errorf("claude not found: %w", err)
 	}
@@ -221,6 +221,13 @@ func (l *Launcher) runHeadlessClaudeTurn(ctx context.Context, slug string, notif
 	}
 	if text := strings.TrimSpace(result.FinalMessage); text != "" {
 		appendHeadlessClaudeLog(slug, "result: "+text)
+		target := firstNonEmpty(channel...)
+		msg, posted, err := l.postHeadlessFinalMessageIfSilent(slug, target, notification, text, startedAt)
+		if err != nil {
+			appendHeadlessClaudeLog(slug, "fallback-post-error: "+err.Error())
+		} else if posted {
+			appendHeadlessClaudeLog(slug, fmt.Sprintf("fallback-post: posted final output to #%s as %s", msg.Channel, msg.ID))
+		}
 	}
 	return nil
 }

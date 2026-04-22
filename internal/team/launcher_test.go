@@ -2,6 +2,7 @@ package team
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -567,6 +568,86 @@ func TestNotificationTargetsForDMChannel(t *testing.T) {
 	})
 	if len(immediate2) != 0 {
 		t.Errorf("agent's own DM message should not echo back, got %+v", immediate2)
+	}
+}
+
+func TestNotificationTargetsForDMChannelCodexRuntimeUsesHeadlessTarget(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	l := &Launcher{
+		provider: "codex",
+		pack: &agent.PackDefinition{
+			LeadSlug: "ceo",
+			Agents: []agent.AgentConfig{
+				{Slug: "ceo", Name: "CEO"},
+				{Slug: "fe", Name: "Frontend Engineer"},
+			},
+		},
+	}
+
+	immediate, delayed := l.notificationTargetsForMessage(channelMessage{
+		From:    "you",
+		Channel: "dm-fe",
+		Content: "Check this component",
+	})
+	if len(immediate) != 1 {
+		t.Fatalf("expected 1 immediate headless target for Codex DM, got %d: %+v", len(immediate), immediate)
+	}
+	if immediate[0].Slug != "fe" {
+		t.Fatalf("expected DM target fe, got %q", immediate[0].Slug)
+	}
+	if immediate[0].PaneTarget != "" {
+		t.Fatalf("expected headless target without pane, got %+v", immediate[0])
+	}
+	if len(delayed) != 0 {
+		t.Fatalf("expected no delayed targets for Codex DM, got %+v", delayed)
+	}
+}
+
+func TestDeliverDMMessageQueuesCodexHeadlessTurn(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	b := NewBroker()
+	l := newHeadlessLauncherForTest()
+	l.broker = b
+	l.provider = "codex"
+	l.notifyLastDelivered = make(map[string]time.Time)
+
+	processed := make(chan string, 1)
+	oldRunTurn := headlessCodexRunTurn
+	headlessCodexRunTurn = func(_ *Launcher, _ context.Context, slug, notification string, channel ...string) error {
+		targetChannel := ""
+		if len(channel) > 0 {
+			targetChannel = channel[0]
+		}
+		processed <- strings.Join([]string{slug, targetChannel, notification}, "\n---\n")
+		return nil
+	}
+	defer func() { headlessCodexRunTurn = oldRunTurn }()
+
+	dmSlug := DMSlugFor("ceo")
+	l.deliverMessageNotification(channelMessage{
+		ID:      "msg-1",
+		From:    "you",
+		Channel: dmSlug,
+		Content: "Real agent smoke test",
+	})
+
+	got := waitForString(t, processed)
+	if !strings.Contains(got, "ceo") {
+		t.Fatalf("expected ceo headless turn, got %q", got)
+	}
+	if !strings.Contains(got, dmSlug) {
+		t.Fatalf("expected DM channel %q in headless turn, got %q", dmSlug, got)
+	}
+	if !strings.Contains(got, "Context: DIRECT MESSAGE") || !strings.Contains(got, "Respond to every message") {
+		t.Fatalf("expected direct-message response instruction, got %q", got)
 	}
 }
 

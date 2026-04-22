@@ -21,8 +21,8 @@ var (
 	headlessCodexCommandContext = exec.CommandContext
 	headlessCodexExecutablePath = os.Executable
 	headlessCodexRunTurn        = func(l *Launcher, ctx context.Context, slug, notification string, channel ...string) error {
-		if l != nil && !l.usesCodexRuntime() {
-			return l.runHeadlessClaudeTurn(ctx, slug, notification)
+		if l != nil && l.memberEffectiveProviderKind(slug) != provider.KindCodex {
+			return l.runHeadlessClaudeTurn(ctx, slug, notification, channel...)
 		}
 		return l.runHeadlessCodexTurn(ctx, slug, notification, channel...)
 	}
@@ -538,7 +538,7 @@ func (l *Launcher) wakeLeadAfterSpecialist(specialistSlug string) {
 	if lead == "" {
 		return
 	}
-	targets := l.agentPaneTargets()
+	targets := l.agentNotificationTargets()
 	target, ok := targets[lead]
 	if !ok {
 		return
@@ -641,6 +641,79 @@ func (l *Launcher) agentPostedSubstantiveMessageSince(slug string, startedAt tim
 		}
 	}
 	return false
+}
+
+func (l *Launcher) agentPostedSubstantiveMessageToChannelSince(slug string, targetChannel string, startedAt time.Time) bool {
+	if l == nil || l.broker == nil {
+		return false
+	}
+	targetChannel = normalizeChannelSlug(targetChannel)
+	if IsDMSlug(targetChannel) {
+		if targetAgent := DMTargetAgent(targetChannel); targetAgent != "" {
+			targetChannel = DMSlugFor(targetAgent)
+		}
+	}
+	for _, msg := range l.broker.AllMessages() {
+		if msg.From != slug {
+			continue
+		}
+		if targetChannel != "" && normalizeChannelSlug(msg.Channel) != targetChannel {
+			continue
+		}
+		content := strings.TrimSpace(msg.Content)
+		if content == "" || strings.HasPrefix(content, "[STATUS]") {
+			continue
+		}
+		when, err := time.Parse(time.RFC3339, msg.Timestamp)
+		if err != nil {
+			continue
+		}
+		if when.Add(time.Second).After(startedAt) {
+			return true
+		}
+	}
+	return false
+}
+
+func (l *Launcher) postHeadlessFinalMessageIfSilent(slug string, targetChannel string, notification string, text string, startedAt time.Time) (channelMessage, bool, error) {
+	if l == nil || l.broker == nil {
+		return channelMessage{}, false, nil
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return channelMessage{}, false, nil
+	}
+	targetChannel = normalizeChannelSlug(targetChannel)
+	if targetChannel == "" {
+		targetChannel = "general"
+	}
+	if IsDMSlug(targetChannel) {
+		if targetAgent := DMTargetAgent(targetChannel); targetAgent != "" {
+			targetChannel = DMSlugFor(targetAgent)
+		}
+	}
+	if l.agentPostedSubstantiveMessageToChannelSince(slug, targetChannel, startedAt) {
+		return channelMessage{}, false, nil
+	}
+	msg, err := l.broker.PostMessage(slug, targetChannel, text, nil, headlessReplyToID(notification))
+	if err != nil {
+		return channelMessage{}, false, err
+	}
+	return msg, true, nil
+}
+
+func headlessReplyToID(notification string) string {
+	const marker = `reply_to_id "`
+	idx := strings.LastIndex(notification, marker)
+	if idx == -1 {
+		return ""
+	}
+	start := idx + len(marker)
+	end := strings.Index(notification[start:], `"`)
+	if end == -1 {
+		return ""
+	}
+	return strings.TrimSpace(notification[start : start+end])
 }
 
 func (l *Launcher) timedOutTaskForTurn(slug string, turn headlessCodexTurn) *teamTask {
@@ -1081,6 +1154,13 @@ func (l *Launcher) runHeadlessCodexTurn(ctx context.Context, slug string, notifi
 	}
 	if text := strings.TrimSpace(firstNonEmpty(result.FinalMessage, result.LastPlainLine)); text != "" {
 		appendHeadlessCodexLog(slug, "result: "+text)
+		target := firstNonEmpty(channel...)
+		msg, posted, err := l.postHeadlessFinalMessageIfSilent(slug, target, notification, text, startedAt)
+		if err != nil {
+			appendHeadlessCodexLog(slug, "fallback-post-error: "+err.Error())
+		} else if posted {
+			appendHeadlessCodexLog(slug, fmt.Sprintf("fallback-post: posted final output to #%s as %s", msg.Channel, msg.ID))
+		}
 	}
 	return nil
 }

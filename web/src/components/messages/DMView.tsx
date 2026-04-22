@@ -6,6 +6,7 @@ import { MessageBubble } from './MessageBubble'
 import { Composer } from './Composer'
 import { InterviewBar } from './InterviewBar'
 import { StreamLineView } from './StreamLineView'
+import { TypingIndicator } from './TypingIndicator'
 
 export function DMView() {
   const currentChannel = useAppStore((s) => s.currentChannel)
@@ -45,6 +46,7 @@ export function DMView() {
               <MessageBubble key={msg.id} message={msg} />
             ))}
           </div>
+          <TypingIndicator />
           <InterviewBar />
           <Composer />
         </div>

@@ -9,14 +9,30 @@ export interface ChannelMeta {
   agentSlug?: string
 }
 
-const DM_SLUG_PREFIX = 'dm-human-'
+const LEGACY_DM_SLUG_PREFIX = 'dm-'
+const BROKEN_DM_SLUG_PREFIX = 'dm-human-'
+
+export function directChannelSlug(agentSlug: string, humanSlug = 'human'): string {
+  const a = humanSlug.trim().toLowerCase()
+  const b = agentSlug.trim().toLowerCase()
+  return a > b ? `${b}__${a}` : `${a}__${b}`
+}
+
+function agentFromDirectSlug(slug: string): string | null {
+  const parts = slug.split('__')
+  if (parts.length !== 2) return null
+  if (parts[0] === 'human' || parts[0] === 'you') return parts[1] || null
+  if (parts[1] === 'human' || parts[1] === 'you') return parts[0] || null
+  return null
+}
 
 /**
  * Resolve a channel slug into DM info, or null if not a DM.
  *
  * Prefers explicit channelMeta (written by enterDM), falls back to the
- * server's `dm-human-<agent>` naming convention so deep-links and page
- * reloads still classify DMs correctly before metadata is hydrated.
+ * server's canonical `<agent>__human` convention plus both legacy `dm-*`
+ * spellings so deep-links and page reloads still classify DMs correctly
+ * before metadata is hydrated.
  */
 export function isDMChannel(
   slug: string,
@@ -24,8 +40,13 @@ export function isDMChannel(
 ): { agentSlug: string } | null {
   const m = meta[slug]
   if (m?.type === 'D' && m.agentSlug) return { agentSlug: m.agentSlug }
-  if (slug.startsWith(DM_SLUG_PREFIX)) {
-    return { agentSlug: slug.slice(DM_SLUG_PREFIX.length) }
+  const directAgent = agentFromDirectSlug(slug)
+  if (directAgent) return { agentSlug: directAgent }
+  if (slug.startsWith(BROKEN_DM_SLUG_PREFIX)) {
+    return { agentSlug: slug.slice(BROKEN_DM_SLUG_PREFIX.length) }
+  }
+  if (slug.startsWith(LEGACY_DM_SLUG_PREFIX)) {
+    return { agentSlug: slug.slice(LEGACY_DM_SLUG_PREFIX.length) }
   }
   return null
 }

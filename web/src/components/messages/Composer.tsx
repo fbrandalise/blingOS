@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { postMessage, post } from '../../api/client'
-import { useAppStore } from '../../stores/app'
+import { createDM, postMessage, post } from '../../api/client'
+import { directChannelSlug, useAppStore } from '../../stores/app'
 import { showNotice } from '../ui/Toast'
 import { confirm } from '../ui/ConfirmDialog'
 import { openProviderSwitcher } from '../ui/ProviderSwitcher'
@@ -91,9 +91,9 @@ function handleSlashCommand(input: string): boolean {
         return true
       }
       const slug = args.trim().toLowerCase()
-      post<{ channel?: string }>('/channels/dm', { members: ['human', slug], type: 'direct' })
+      createDM(slug)
         .then((data) => {
-          const ch = data.channel || `dm-${slug}`
+          const ch = data.slug || directChannelSlug(slug)
           store.enterDM(slug, ch)
         })
         .catch(() => showNotice('Agent not found: ' + args.trim(), 'error'))

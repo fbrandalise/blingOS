@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useAppStore, isDMChannel, type ChannelMeta } from '../stores/app'
+import { useAppStore, directChannelSlug, isDMChannel, type ChannelMeta } from '../stores/app'
 
 type Route =
   | { view: 'channel'; channel: string }
@@ -77,7 +77,7 @@ function stateToHash(state: {
  * Two-way sync between the Zustand app store and the location hash.
  *
  *   #/channels/<slug>            ↔ currentChannel=<slug>, currentApp=null
- *   #/dm/<agent>                 ↔ currentChannel=dm-human-<agent>, channelMeta marked type 'D'
+ *   #/dm/<agent>                 ↔ currentChannel=<agent>__human, channelMeta marked type 'D'
  *   #/apps/<id>                  ↔ currentApp=<id>
  *   #/wiki[/<path>]              ↔ currentApp='wiki', wikiPath=<path>
  *   #/notebooks[/<agent>[/<e>]]  ↔ currentApp='notebooks', notebookAgentSlug, notebookEntrySlug
@@ -115,8 +115,7 @@ export function useHashRouter() {
       const route = parseHash(window.location.hash)
       ignoreNextStoreSync.current = true
       if (route.view === 'dm') {
-        // Broker uses the dm-human-<slug> channel convention by default.
-        enterDM(route.agent, `dm-human-${route.agent}`)
+        enterDM(route.agent, directChannelSlug(route.agent))
       } else if (route.view === 'app') {
         setCurrentApp(route.app)
       } else if (route.view === 'wiki') {

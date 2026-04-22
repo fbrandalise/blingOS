@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Xmark } from 'iconoir-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useAppStore } from '../../stores/app'
+import { directChannelSlug, useAppStore } from '../../stores/app'
 import { useOfficeMembers, useChannelMembers } from '../../hooks/useMembers'
 import { useAgentStream } from '../../hooks/useAgentStream'
 import { createDM, getAgentLogs, post } from '../../api/client'
@@ -135,8 +135,7 @@ function AgentPanelView({ agent, onClose }: AgentPanelViewProps) {
     setDmLoading(true)
     try {
       const result = await createDM(agent.slug)
-      const channel = (result as { channel?: { slug?: string } })?.channel?.slug
-        ?? `dm-human-${agent.slug}`
+      const channel = result.slug || directChannelSlug(agent.slug)
       enterDM(agent.slug, channel)
       setActiveAgentSlug(null)
     } catch (err: unknown) {

@@ -32,6 +32,7 @@ import { ConfirmHost } from './components/ui/ConfirmDialog'
 import { ProviderSwitcherHost } from './components/ui/ProviderSwitcher'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useHashRouter } from './hooks/useHashRouter'
+import { useBrokerEvents } from './hooks/useBrokerEvents'
 import './styles/shadcn.css'
 import './styles/global.css'
 import './styles/layout.css'
@@ -213,6 +214,7 @@ export default function App() {
 
   useKeyboardShortcuts()
   useHashRouter()
+  useBrokerEvents(apiReady)
 
   // Load theme CSS when theme changes
   useEffect(() => {

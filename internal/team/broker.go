@@ -231,26 +231,50 @@ type teamChannel struct {
 }
 
 func (ch *teamChannel) isDM() bool {
-	return ch.Type == "dm" || strings.HasPrefix(ch.Slug, "dm-")
+	return ch.Type == "dm" || IsDMSlug(ch.Slug)
 }
 
 // IsDMSlug checks whether a channel slug represents a direct message.
 func IsDMSlug(slug string) bool {
-	return strings.HasPrefix(slug, "dm-")
+	slug = normalizeChannelSlug(slug)
+	return strings.HasPrefix(slug, "dm-") || canonicalDMTargetAgent(slug) != ""
 }
 
 // DMSlugFor returns the DM channel slug for a given agent.
 func DMSlugFor(agentSlug string) string {
-	return "dm-" + agentSlug
+	agentSlug = normalizeActorSlug(agentSlug)
+	if agentSlug == "" {
+		return ""
+	}
+	return channel.DirectSlug("human", agentSlug)
 }
 
 // DMTargetAgent extracts the agent slug from a DM channel slug.
 // Returns "" if the slug is not a DM.
 func DMTargetAgent(slug string) string {
-	if !IsDMSlug(slug) {
+	slug = normalizeChannelSlug(slug)
+	if strings.HasPrefix(slug, "dm-human-") {
+		return strings.TrimPrefix(slug, "dm-human-")
+	}
+	if strings.HasPrefix(slug, "dm-") {
+		return strings.TrimPrefix(slug, "dm-")
+	}
+	return canonicalDMTargetAgent(slug)
+}
+
+func canonicalDMTargetAgent(slug string) string {
+	parts := strings.Split(normalizeChannelSlug(slug), "__")
+	if len(parts) != 2 {
 		return ""
 	}
-	return strings.TrimPrefix(slug, "dm-")
+	switch {
+	case parts[0] == "human" || parts[0] == "you":
+		return parts[1]
+	case parts[1] == "human" || parts[1] == "you":
+		return parts[0]
+	default:
+		return ""
+	}
 }
 
 type officeMember struct {
@@ -1878,19 +1902,10 @@ func (b *Broker) handleAgentToolEvent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// formatAgentToolEvent renders a compact one-line audit record for the
-// per-agent stream. Truncates noisy fields so a long result doesn't blow the
-// stream buffer.
+// formatAgentToolEvent renders one structured audit record for the per-agent
+// stream. SSE data lines must stay single-line; JSON encoding preserves exact
+// arguments/results while escaping embedded newlines.
 func formatAgentToolEvent(phase, tool, args, result, errStr string) string {
-	const maxField = 240
-	truncate := func(s string) string {
-		s = strings.TrimSpace(s)
-		s = strings.ReplaceAll(s, "\n", " ")
-		if len(s) > maxField {
-			return s[:maxField] + "…"
-		}
-		return s
-	}
 	tool = strings.TrimSpace(tool)
 	phase = strings.TrimSpace(phase)
 	if phase == "" {
@@ -1899,17 +1914,37 @@ func formatAgentToolEvent(phase, tool, args, result, errStr string) string {
 	if tool == "" {
 		return ""
 	}
-	parts := []string{fmt.Sprintf("[%s] %s", phase, tool)}
+	payload := map[string]any{
+		"type":  "mcp_tool_event",
+		"phase": phase,
+		"tool":  tool,
+	}
 	if args != "" {
-		parts = append(parts, "args="+truncate(args))
+		payload["arguments"] = decodeToolEventField(args)
 	}
 	if result != "" {
-		parts = append(parts, "result="+truncate(result))
+		payload["result"] = decodeToolEventField(result)
 	}
 	if errStr != "" {
-		parts = append(parts, "error="+truncate(errStr))
+		payload["error"] = decodeToolEventField(errStr)
 	}
-	return strings.Join(parts, " ")
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func decodeToolEventField(raw string) any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var decoded any
+	if err := json.Unmarshal([]byte(raw), &decoded); err == nil {
+		return decoded
+	}
+	return raw
 }
 
 // handleAgentStream serves a per-agent stdout SSE stream.
@@ -2372,7 +2407,9 @@ func (b *Broker) PostInboundSurfaceMessage(from, channel, content, provider stri
 	}
 	if b.findChannelLocked(channel) == nil {
 		if IsDMSlug(channel) {
-			b.ensureDMConversationLocked(channel)
+			if dm := b.ensureDMConversationLocked(channel); dm != nil {
+				channel = dm.Slug
+			}
 		} else {
 			return channelMessage{}, fmt.Errorf("channel not found: %s", channel)
 		}
@@ -3169,10 +3206,13 @@ func (b *Broker) ensureDMConversationLocked(slug string) *teamChannel {
 		return nil
 	}
 	agentSlug := DMTargetAgent(slug)
+	if agentSlug == "" {
+		return nil
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	// Register in channelStore for proper type-based DM detection.
 	if b.channelStore != nil {
-		newSlug := channel.DirectSlug("human", agentSlug)
+		newSlug := DMSlugFor(agentSlug)
 		if _, err := b.channelStore.GetOrCreateDirect("human", agentSlug); err == nil {
 			// Update slug in broker to the new deterministic format if different.
 			if newSlug != slug {
@@ -5764,11 +5804,6 @@ func (b *Broker) handleConfig(w http.ResponseWriter, r *http.Request) {
 			providerChanged := b.runtimeProvider != provider
 			b.runtimeProvider = provider
 			if providerChanged {
-				// Tell the launcher to respawn panes (if claude-code) or
-				// tear them down (if codex). Without this, a user who
-				// switches provider in Settings keeps seeing stale claude
-				// panes while dispatch routes through codex — the textbook
-				// "I picked Codex, why is Claude still running" symptom.
 				b.publishOfficeChangeLocked(officeChangeEvent{Kind: "office_reseeded"})
 			}
 			b.mu.Unlock()
@@ -5823,33 +5858,48 @@ func (b *Broker) handleOfficeMembers(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		b.mu.Lock()
-		members := make([]officeMember, len(b.members))
-		copy(members, b.members)
-		// Surface "active" status for agents tagged within the last 60s that
-		// haven't yet replied. The web TypingIndicator reads this to render
-		// "X is thinking..." as ephemeral system text while a message is
-		// being routed. Without this field the indicator never shows —
-		// `status` was on the TS type but the backend never populated it.
-		taggedAt := b.lastTaggedAt
-		b.mu.Unlock()
-
-		type officeMemberView struct {
+		type officeMemberResponse struct {
 			officeMember
-			Status string `json:"status,omitempty"`
+			Status       string `json:"status,omitempty"`
+			Activity     string `json:"activity,omitempty"`
+			Detail       string `json:"detail,omitempty"`
+			Task         string `json:"task,omitempty"`
+			LiveActivity string `json:"liveActivity,omitempty"`
+			LastTime     string `json:"lastTime,omitempty"`
 		}
-		views := make([]officeMemberView, len(members))
-		cutoff := time.Now().Add(-60 * time.Second)
-		for i, m := range members {
-			v := officeMemberView{officeMember: m}
-			if taggedAt != nil {
-				if t, ok := taggedAt[m.Slug]; ok && t.After(cutoff) {
-					v.Status = "active"
+		now := time.Now()
+		members := make([]officeMemberResponse, 0, len(b.members))
+		for _, member := range b.members {
+			entry := officeMemberResponse{officeMember: member}
+			if snapshot, ok := b.activity[member.Slug]; ok {
+				entry.Status = snapshot.Status
+				entry.Activity = snapshot.Activity
+				entry.Detail = snapshot.Detail
+				entry.LiveActivity = snapshot.Detail
+				entry.Task = snapshot.Detail
+				entry.LastTime = snapshot.LastTime
+			}
+			if entry.Status == "" && b.lastTaggedAt != nil {
+				if taggedAt, ok := b.lastTaggedAt[member.Slug]; ok && now.Sub(taggedAt) < 60*time.Second {
+					entry.Status = "active"
+					entry.Activity = "queued"
+					entry.Detail = "active"
+					entry.LiveActivity = "active"
+					entry.Task = "active"
+					entry.LastTime = taggedAt.UTC().Format(time.RFC3339)
 				}
 			}
-			views[i] = v
+			if entry.Status == "" {
+				entry.Status = "idle"
+			}
+			if entry.Activity == "" {
+				entry.Activity = "idle"
+			}
+			members = append(members, entry)
 		}
+		b.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"members": views})
+		_ = json.NewEncoder(w).Encode(map[string]any{"members": members})
 	case http.MethodPost:
 		var body struct {
 			Action         string                    `json:"action"`
@@ -6445,6 +6495,30 @@ func (b *Broker) handleCreateDM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	b.mu.Lock()
+	if b.findChannelLocked(ch.Slug) == nil {
+		now := time.Now().UTC().Format(time.RFC3339)
+		target := DMTargetAgent(ch.Slug)
+		description := "Group direct messages"
+		memberSlugs := append([]string(nil), body.Members...)
+		if target != "" {
+			description = "Direct messages with " + target
+			memberSlugs = []string{"human", target}
+		}
+		name := strings.TrimSpace(ch.Name)
+		if name == "" {
+			name = ch.Slug
+		}
+		b.channels = append(b.channels, teamChannel{
+			Slug:        ch.Slug,
+			Name:        name,
+			Type:        "dm",
+			Description: description,
+			Members:     uniqueSlugs(memberSlugs),
+			CreatedBy:   "human",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		})
+	}
 	_ = b.saveLocked()
 	b.mu.Unlock()
 
@@ -6925,7 +6999,9 @@ func (b *Broker) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 	// Auto-create DM conversations on first message (like Slack's conversations.open)
 	if b.findChannelLocked(channel) == nil {
 		if IsDMSlug(channel) {
-			b.ensureDMConversationLocked(channel)
+			if dm := b.ensureDMConversationLocked(channel); dm != nil {
+				channel = dm.Slug
+			}
 		} else if b.channelStore != nil {
 			if _, ok := b.channelStore.GetBySlug(channel); !ok {
 				b.mu.Unlock()
@@ -7126,11 +7202,8 @@ func (b *Broker) SeenTelegramGroups() map[int64]string {
 	return out
 }
 
-// MarkRoutingTargets records implicit-routing recipients as "typing" so the
-// web TypingIndicator can render "X is thinking..." above the composer
-// without inserting a persisted "Routing to @X..." chat message. The entry
-// auto-clears on the next POST /messages from the agent (see the delete
-// in handlePostMessage), so the indicator is naturally ephemeral.
+// MarkRoutingTargets records implicit routing recipients as active so the UI
+// can show typing/thinking state without persisting a routing banner message.
 func (b *Broker) MarkRoutingTargets(slugs []string) {
 	if len(slugs) == 0 {
 		return
@@ -7150,6 +7223,7 @@ func (b *Broker) MarkRoutingTargets(slugs []string) {
 	}
 }
 
+// PostSystemMessage posts a lightweight system message that shows progress without blocking.
 func (b *Broker) PostSystemMessage(channel, content, kind string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -7179,7 +7253,14 @@ func (b *Broker) PostMessage(from, channel, content string, tagged []string, rep
 		channel = "general"
 	}
 	if b.findChannelLocked(channel) == nil {
-		return channelMessage{}, fmt.Errorf("channel not found")
+		if IsDMSlug(channel) {
+			if dm := b.ensureDMConversationLocked(channel); dm != nil {
+				channel = dm.Slug
+			}
+		}
+		if b.findChannelLocked(channel) == nil {
+			return channelMessage{}, fmt.Errorf("channel not found")
+		}
 	}
 	if !b.canAccessChannelLocked(from, channel) {
 		return channelMessage{}, fmt.Errorf("channel access denied")
@@ -7323,7 +7404,9 @@ func (b *Broker) handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	b.mu.Lock()
 	// Auto-create DM conversation on read (user opens DM before sending)
 	if IsDMSlug(channel) && b.findChannelLocked(channel) == nil {
-		b.ensureDMConversationLocked(channel)
+		if dm := b.ensureDMConversationLocked(channel); dm != nil {
+			channel = dm.Slug
+		}
 	}
 	if !b.canAccessChannelLocked(accessSlug, channel) {
 		b.mu.Unlock()

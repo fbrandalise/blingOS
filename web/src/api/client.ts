@@ -177,6 +177,10 @@ export interface OfficeMember {
   role: string
   emoji?: string
   status?: string
+  activity?: string
+  detail?: string
+  liveActivity?: string
+  lastTime?: string
   task?: string
   channel?: string
   provider?: ProviderBinding | string
@@ -223,6 +227,11 @@ export interface Channel {
   members?: string[]
 }
 
+export interface DMChannelResponse extends Channel {
+  id?: string
+  created?: boolean
+}
+
 export function getChannels() {
   return get<{ channels: Channel[] }>('/channels')
 }
@@ -242,7 +251,7 @@ export function generateChannel(prompt: string) {
 }
 
 export function createDM(agentSlug: string) {
-  return post('/channels/dm', {
+  return post<DMChannelResponse>('/channels/dm', {
     members: ['human', agentSlug],
     type: 'direct',
   })

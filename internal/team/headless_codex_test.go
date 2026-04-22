@@ -607,6 +607,42 @@ func TestEnqueueHeadlessCodexTurnProcessesFIFO(t *testing.T) {
 	}
 }
 
+func TestPostHeadlessFinalMessageIfSilentPostsFinalOutput(t *testing.T) {
+	b := NewBroker()
+	channel := DMSlugFor("ceo")
+	root, err := b.PostMessage("you", channel, "Ping the CEO.", nil, "")
+	if err != nil {
+		t.Fatalf("post human message: %v", err)
+	}
+	l := &Launcher{broker: b}
+	startedAt := time.Now().UTC().Add(-1 * time.Second)
+
+	msg, posted, err := l.postHeadlessFinalMessageIfSilent(
+		"ceo",
+		"dm-human-ceo",
+		fmt.Sprintf(`Reply using team_broadcast with reply_to_id "%s".`, root.ID),
+		"REAL_AGENT_TYPING_OK",
+		startedAt,
+	)
+	if err != nil {
+		t.Fatalf("fallback post: %v", err)
+	}
+	if !posted {
+		t.Fatal("expected final output fallback to post")
+	}
+	if msg.From != "ceo" || msg.Channel != channel || msg.Content != "REAL_AGENT_TYPING_OK" || msg.ReplyTo != root.ID {
+		t.Fatalf("unexpected fallback message: %+v", msg)
+	}
+
+	_, posted, err = l.postHeadlessFinalMessageIfSilent("ceo", channel, "", "duplicate", startedAt)
+	if err != nil {
+		t.Fatalf("second fallback post: %v", err)
+	}
+	if posted {
+		t.Fatal("expected fallback to skip when the agent already posted to the target channel")
+	}
+}
+
 func TestSendTaskUpdatePassesTaskChannelToHeadlessTurn(t *testing.T) {
 	oldRunTurn := headlessCodexRunTurn
 	processed := make(chan processedTurn, 1)

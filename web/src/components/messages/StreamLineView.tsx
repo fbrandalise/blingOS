@@ -34,13 +34,48 @@ export function StreamLineView({ line, compact = false }: StreamLineViewProps) {
     return null
   }
 
+  if (evtType === 'mcp_tool_event') {
+    const phase = stringish(parsed.phase)
+    const tool = stringish(parsed.tool) || 'tool'
+    return (
+      <ToolCallCard
+        item={{
+          type: 'tool_call',
+          name: phase ? `${phase}: ${tool}` : tool,
+          arguments: parsed.arguments ?? parsed.args,
+          result: parsed.result,
+          error: parsed.error,
+        }}
+        compact={compact}
+      />
+    )
+  }
+
+  if (evtType === 'assistant') {
+    return <ClaudeAssistantEvent parsed={parsed} compact={compact} />
+  }
+
+  if (evtType === 'user') {
+    return <ClaudeUserEvent parsed={parsed} compact={compact} />
+  }
+
+  if (evtType === 'result') {
+    const text = stringish(parsed.result).trim()
+    if (text) return <div className="cc-thinking">{text}</div>
+  }
+
+  if (evtType === 'response.output_text.delta') {
+    const text = stringish(parsed.delta ?? parsed.text).trim()
+    if (text) return <div className="cc-thinking">{text}</div>
+  }
+
   // item.completed → agent_message / tool call
   if (evtType === 'item.completed' && parsed.item && typeof parsed.item === 'object') {
     const item = parsed.item as Record<string, unknown>
     const itemType = typeof item.type === 'string' ? item.type : ''
 
-    if (itemType === 'agent_message') {
-      const text = typeof item.text === 'string' ? item.text.trim() : ''
+    if (itemType === 'agent_message' || itemType === 'message' || itemType === 'assistant') {
+      const text = codexItemText(item)
       if (!text) return null
       const truncated = text.length > 500 ? text.slice(0, 500) + '\u2026' : text
       return <div className="cc-thinking">{truncated}</div>
@@ -56,6 +91,117 @@ export function StreamLineView({ line, compact = false }: StreamLineViewProps) {
 
   // Fallback: structured event with type/phase/agent + detail + extras
   return <GenericEventCard parsed={parsed} compact={compact} />
+}
+
+function ClaudeAssistantEvent({ parsed, compact }: { parsed: Record<string, unknown>; compact: boolean }) {
+  const blocks = messageContentBlocks(parsed)
+  const rendered = blocks
+    .map((block, index) => {
+      const blockType = stringish(block.type)
+      if (blockType === 'text') {
+        const text = stringish(block.text).trim()
+        return text ? <div key={index} className="cc-thinking">{text}</div> : null
+      }
+      if (blockType === 'thinking') {
+        const text = stringish(block.thinking).trim()
+        return text ? <div key={index} className="stream-card-detail">{text}</div> : null
+      }
+      if (blockType === 'tool_use') {
+        return (
+          <ToolCallCard
+            key={index}
+            item={{ type: 'tool_call', name: block.name, arguments: block.input }}
+            compact={compact}
+          />
+        )
+      }
+      return null
+    })
+    .filter(Boolean)
+
+  if (rendered.length === 0) return null
+  if (rendered.length === 1) return <>{rendered[0]}</>
+  return <div className="stream-event-stack">{rendered}</div>
+}
+
+function ClaudeUserEvent({ parsed, compact }: { parsed: Record<string, unknown>; compact: boolean }) {
+  const blocks = messageContentBlocks(parsed)
+  const rendered = blocks
+    .map((block, index) => {
+      if (stringish(block.type) !== 'tool_result') return null
+      const content = block.content
+      return (
+        <div key={index} className="cc-tool-call">
+          <div className="cc-tool-section-label">Tool result</div>
+          <ToolResultContent text={stringFromToolContent(content)} compact={compact} />
+        </div>
+      )
+    })
+    .filter(Boolean)
+
+  const toolUseResult = parsed.tool_use_result
+  if (toolUseResult && typeof toolUseResult === 'object') {
+    const result = toolUseResult as Record<string, unknown>
+    const text = [stringish(result.stdout), stringish(result.stderr)].filter(Boolean).join('\n')
+    if (text) {
+      rendered.push(
+        <div key="tool-use-result" className="cc-tool-call">
+          <div className="cc-tool-section-label">Tool result</div>
+          <ToolResultContent text={text} compact={compact} />
+        </div>,
+      )
+    }
+  }
+
+  if (rendered.length === 0) return null
+  if (rendered.length === 1) return <>{rendered[0]}</>
+  return <div className="stream-event-stack">{rendered}</div>
+}
+
+function messageContentBlocks(parsed: Record<string, unknown>): Record<string, unknown>[] {
+  const message = parsed.message
+  if (!message || typeof message !== 'object') return []
+  const content = (message as Record<string, unknown>).content
+  if (!Array.isArray(content)) return []
+  return content.filter((block): block is Record<string, unknown> => !!block && typeof block === 'object')
+}
+
+function codexItemText(item: Record<string, unknown>): string {
+  const direct = stringish(item.text).trim()
+  if (direct) return direct
+  const content = item.content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((part) => {
+      if (!part || typeof part !== 'object') return ''
+      const p = part as Record<string, unknown>
+      const typ = stringish(p.type)
+      if (typ && typ !== 'output_text' && typ !== 'text') return ''
+      return stringish(p.text).trim()
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function stringFromToolContent(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object') {
+          const obj = item as Record<string, unknown>
+          return stringish(obj.text ?? obj.content)
+        }
+        return ''
+      })
+      .filter(Boolean)
+      .join('\n')
+  }
+  if (content && typeof content === 'object') {
+    return JSON.stringify(content)
+  }
+  return ''
 }
 
 function renderTokens(parsed: Record<string, unknown>): string | null {
@@ -100,8 +246,8 @@ const ARG_SKIP = new Set(['my_slug', 'new_topic', 'viewer_slug', 'tagged'])
 function ToolCallCard({ item, compact }: { item: Record<string, unknown>; compact: boolean }) {
   const [open, setOpen] = useState(false)
   const toolName = (item.tool as string | undefined) || (item.name as string | undefined) || 'tool'
-  const args = (item.arguments as Record<string, unknown> | undefined) || (item.args as Record<string, unknown> | undefined) || {}
-  const result = item.result as { content?: Array<{ text?: string }> } | undefined
+  const args = objectFromToolField(item.arguments ?? item.args)
+  const result = normalizeToolResult(item.result)
   const errorField = item.error
 
   const { summaryArg, summaryResult, summaryError } = useMemo(() => {
@@ -184,6 +330,35 @@ function ToolCallCard({ item, compact }: { item: Record<string, unknown>; compac
       )}
     </div>
   )
+}
+
+function objectFromToolField(value: unknown): Record<string, unknown> {
+  if (!value) return {}
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // keep as scalar below
+    }
+    return { value }
+  }
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return { value }
+}
+
+function normalizeToolResult(value: unknown): { content?: Array<{ text?: string }> } | undefined {
+  if (value == null || value === '') return undefined
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const obj = value as { content?: Array<{ text?: string }> }
+    if (Array.isArray(obj.content)) return obj
+    return { content: [{ text: JSON.stringify(value) }] }
+  }
+  return { content: [{ text: typeof value === 'string' ? value : JSON.stringify(value) }] }
 }
 
 function ToolResultContent({ text, compact }: { text?: string; compact: boolean }) {
