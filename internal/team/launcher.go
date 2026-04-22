@@ -726,16 +726,32 @@ func (l *Launcher) taskNotificationTargets(action officeActionLog, task teamTask
 	}
 	lead := l.officeLeadSlug()
 	enabledMembers := map[string]struct{}{}
+	disabledMembers := map[string]struct{}{}
 	if l.broker != nil {
 		for _, member := range l.broker.EnabledMembers(task.Channel) {
 			enabledMembers[member] = struct{}{}
 		}
+		for _, member := range l.broker.DisabledMembers(task.Channel) {
+			disabledMembers[member] = struct{}{}
+		}
+	}
+	// Task ownership is an explicit human/CEO assignment. The same bypass that
+	// lets an @-tag wake a wizard-hired specialist applies here: the owner may
+	// have been hired post-seed and not yet in ch.Members. Disabled (muted)
+	// members are still excluded — muting is an explicit silence.
+	actor := strings.TrimSpace(action.Actor)
+	owner := strings.TrimSpace(task.Owner)
+	isAssigned := func(slug string) bool {
+		return slug != "" && (slug == owner || slug == actor)
 	}
 	addImmediate := func(slug string) {
 		if slug == "" {
 			return
 		}
-		if len(enabledMembers) > 0 {
+		if _, muted := disabledMembers[slug]; muted {
+			return
+		}
+		if !isAssigned(slug) && len(enabledMembers) > 0 {
 			if _, ok := enabledMembers[slug]; !ok {
 				return
 			}
@@ -749,7 +765,10 @@ func (l *Launcher) taskNotificationTargets(action officeActionLog, task teamTask
 		if slug == "" {
 			return
 		}
-		if len(enabledMembers) > 0 {
+		if _, muted := disabledMembers[slug]; muted {
+			return
+		}
+		if !isAssigned(slug) && len(enabledMembers) > 0 {
 			if _, ok := enabledMembers[slug]; !ok {
 				return
 			}
@@ -759,8 +778,6 @@ func (l *Launcher) taskNotificationTargets(action officeActionLog, task teamTask
 			delete(targetMap, slug)
 		}
 	}
-	actor := strings.TrimSpace(action.Actor)
-	owner := strings.TrimSpace(task.Owner)
 
 	if owner == "" {
 		if lead != "" && lead != actor {
@@ -1010,17 +1027,31 @@ func (l *Launcher) notificationTargetsForMessage(msg channelMessage) (immediate 
 		owner = l.taskOwnerForMessage(msg)
 	}
 	enabledMembers := map[string]struct{}{}
+	disabledMembers := map[string]struct{}{}
 	if l.broker != nil {
 		for _, member := range l.broker.EnabledMembers(msg.Channel) {
 			enabledMembers[member] = struct{}{}
 		}
+		for _, member := range l.broker.DisabledMembers(msg.Channel) {
+			disabledMembers[member] = struct{}{}
+		}
 	}
+
+	// isExplicit checks whether a slug was explicitly @-tagged by the sender.
+	// Explicit tags bypass the enabledMembers filter so a newly hired specialist
+	// not yet in ch.Members can still be reached. They do NOT bypass ch.Disabled:
+	// an explicit disable is the user's intent to silence the agent, and an
+	// @-tag must not override it.
+	isExplicit := func(slug string) bool { return containsSlug(msg.Tagged, slug) }
 
 	addImmediate := func(slug string) {
 		if slug == "" || slug == msg.From {
 			return
 		}
-		if len(enabledMembers) > 0 {
+		if _, muted := disabledMembers[slug]; muted {
+			return
+		}
+		if !isExplicit(slug) && len(enabledMembers) > 0 {
 			if _, ok := enabledMembers[slug]; !ok {
 				return
 			}
@@ -1034,7 +1065,11 @@ func (l *Launcher) notificationTargetsForMessage(msg channelMessage) (immediate 
 		if slug == "" || slug == msg.From {
 			return false
 		}
-		if len(enabledMembers) > 0 {
+		if _, muted := disabledMembers[slug]; muted {
+			return false
+		}
+		explicit := isExplicit(slug)
+		if !explicit && len(enabledMembers) > 0 {
 			if _, ok := enabledMembers[slug]; !ok {
 				return false
 			}
@@ -1044,7 +1079,7 @@ func (l *Launcher) notificationTargetsForMessage(msg channelMessage) (immediate 
 		}
 		// Explicit @-tag: always allow regardless of domain. Domain inference is
 		// for implicit routing only — it should never suppress an explicit mention.
-		if containsSlug(msg.Tagged, slug) {
+		if explicit {
 			return true
 		}
 		if owner != "" {
@@ -1070,19 +1105,19 @@ func (l *Launcher) notificationTargetsForMessage(msg channelMessage) (immediate 
 				if slug == "" || slug == msg.From || slug == lead {
 					continue
 				}
-				// Human explicitly tagged this specialist. Skip domain inference —
-				// the human's intent is explicit and trumps content-based routing.
-				// Only check that the specialist is an enabled channel member.
-				isEnabled := len(enabledMembers) == 0
-				if !isEnabled {
-					_, isEnabled = enabledMembers[slug]
+				// Respect explicit disables. A muted specialist stays muted
+				// even when @-tagged — muting is the user's explicit intent.
+				if _, muted := disabledMembers[slug]; muted {
+					continue
 				}
-				if isEnabled {
-					if target, ok := targetMap[slug]; ok {
-						immediate = append(immediate, target)
-						delete(targetMap, slug)
-						humanExplicitlyTaggedSpecialists = true
-					}
+				// Explicit @-tag trumps channel-membership. The specialist
+				// may have been hired after #general was seeded and not yet
+				// added to ch.Members; dropping the notification here would
+				// silently re-route the human's direct address to CEO.
+				if target, ok := targetMap[slug]; ok {
+					immediate = append(immediate, target)
+					delete(targetMap, slug)
+					humanExplicitlyTaggedSpecialists = true
 				}
 			}
 			if !humanExplicitlyTaggedSpecialists {
@@ -4191,10 +4226,16 @@ func (l *Launcher) activeSessionMembers() []officeMember {
 	for _, member := range members {
 		bySlug[member.Slug] = member
 	}
-	filtered := make([]officeMember, 0, len(l.pack.Agents))
+	// Pack order comes first (stable UI / pane layout), then any broker
+	// members not in the pack (wizard-hired agents post-launch). Dropping
+	// broker-only members here silently excluded wizard-hired specialists
+	// from agentNotificationTargets, making @-tags and DMs route to CEO.
+	filtered := make([]officeMember, 0, len(members))
+	seen := make(map[string]struct{}, len(members))
 	for _, cfg := range l.pack.Agents {
 		if member, ok := bySlug[cfg.Slug]; ok {
 			filtered = append(filtered, member)
+			seen[cfg.Slug] = struct{}{}
 			continue
 		}
 		member := officeMember{
@@ -4208,6 +4249,13 @@ func (l *Launcher) activeSessionMembers() []officeMember {
 			BuiltIn:        cfg.Slug == l.pack.LeadSlug || cfg.Slug == "ceo",
 		}
 		applyOfficeMemberDefaults(&member)
+		filtered = append(filtered, member)
+		seen[cfg.Slug] = struct{}{}
+	}
+	for _, member := range members {
+		if _, ok := seen[member.Slug]; ok {
+			continue
+		}
 		filtered = append(filtered, member)
 	}
 	if len(filtered) > 0 {
