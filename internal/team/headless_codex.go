@@ -1488,6 +1488,25 @@ func buildHeadlessCodexPrompt(systemPrompt string, prompt string) string {
 }
 
 func wuphfLogDir() string {
+	// WUPHF_LOG_DIR lets tests redirect headless log writes to a
+	// process-stable path. Headless-worker goroutines routinely outlive the
+	// test that started them; if they wrote to the test's t.TempDir() they
+	// would race with go's test-scoped RemoveAll ("directory not empty" on
+	// unlinkat). Tests set this to a package-owned leaked dir so writes
+	// from leaked goroutines land harmlessly. Unset in production → HOME.
+	if override := strings.TrimSpace(os.Getenv("WUPHF_LOG_DIR")); override != "" {
+		// Fail loudly on a broken override instead of silently falling
+		// through — a misconfigured WUPHF_LOG_DIR path otherwise surfaces
+		// as confusing "file open failed" errors far from the root cause.
+		// Returning "" disables headless logging for this call (the
+		// appendHeadless*Log helpers no-op on empty dir), which matches
+		// the HOME-lookup graceful-degradation path below.
+		if err := os.MkdirAll(override, 0o700); err != nil {
+			fmt.Fprintf(os.Stderr, "wuphf: WUPHF_LOG_DIR=%q unwritable: %v — headless logging disabled\n", override, err)
+			return ""
+		}
+		return override
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
