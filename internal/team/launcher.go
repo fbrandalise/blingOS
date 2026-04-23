@@ -1952,7 +1952,7 @@ func (l *Launcher) shouldUseHeadlessDispatchForTarget(target notificationTarget)
 
 // skipPaneForSlug returns true when the given slug should not have a tmux
 // pane target registered — either because pane spawn failed earlier, or
-// because the agent is bound to the codex runtime and uses its own headless
+// because the agent is bound to a non-pane provider and uses its own headless
 // pipeline. In either case, dispatch falls back to the headless path.
 func (l *Launcher) skipPaneForSlug(slug string) bool {
 	slug = strings.TrimSpace(slug)
@@ -1988,6 +1988,12 @@ func (l *Launcher) oneOnOneAgent() string {
 // headless one-shot runtime (shared by Codex and Opencode — both skip the
 // tmux/claude pane infrastructure and drive a fresh CLI per turn through the
 // broker queue in headless_codex.go).
+//
+// Prefer the capability helpers (usesPaneRuntime, requiresClaudeSessionReset)
+// for new code asking "is this a non-pane runtime" — they're Registry-driven
+// and pick up future providers (Ollama, vLLM, exo, OpenAI-compatible) without
+// further edits here. usesCodexRuntime stays for codex/opencode-binary-specific
+// concerns (Preflight, launch routing).
 func (l *Launcher) usesCodexRuntime() bool {
 	p := strings.TrimSpace(strings.ToLower(l.provider))
 	return p == "codex" || p == "opencode"
@@ -1998,6 +2004,21 @@ func (l *Launcher) usesCodexRuntime() bool {
 // (binary name, args, prompt layout).
 func (l *Launcher) usesOpencodeRuntime() bool {
 	return strings.EqualFold(strings.TrimSpace(l.provider), "opencode")
+}
+
+// usesPaneRuntime reports whether the install-wide provider should run
+// agents in interactive tmux panes. Reads PaneEligible from the provider
+// Registry; an unregistered or non-pane-eligible provider returns false,
+// so dispatch falls through to the headless path.
+func (l *Launcher) usesPaneRuntime() bool {
+	return provider.CapabilitiesFor(normalizeProviderKind(l.provider)).PaneEligible
+}
+
+// requiresClaudeSessionReset reports whether the install-wide provider
+// populates the Claude session store and therefore needs provider.ResetClaudeSessions
+// to run on ResetSession / ReconfigureSession. Today only Claude Code does.
+func (l *Launcher) requiresClaudeSessionReset() bool {
+	return provider.CapabilitiesFor(normalizeProviderKind(l.provider)).RequiresClaudeSessionReset
 }
 
 // memberEffectiveProviderKind returns the provider kind that should run the
@@ -2014,12 +2035,11 @@ func (l *Launcher) memberEffectiveProviderKind(slug string) string {
 }
 
 // memberUsesHeadlessOneShotRuntime reports whether the given agent is bound to
-// a runtime that drives a fresh CLI per turn (Codex, Opencode). Such agents
-// skip the tmux/claude pane infrastructure in favor of the broker-driven queue
-// in headless_codex.go.
+// a runtime that is not pane-eligible and therefore skips the tmux/claude pane
+// infrastructure in favor of the broker-driven headless queue.
 func (l *Launcher) memberUsesHeadlessOneShotRuntime(slug string) bool {
 	kind := l.memberEffectiveProviderKind(slug)
-	return kind == provider.KindCodex || kind == provider.KindOpencode
+	return !provider.CapabilitiesFor(kind).PaneEligible
 }
 
 // normalizeProviderKind trims and canonicalizes provider kinds while
@@ -2040,8 +2060,10 @@ func normalizeProviderKind(raw string) string {
 	}
 }
 
+// UsesTmuxRuntime reports whether agents run in tmux panes. Equivalent to
+// usesPaneRuntime — exported for cmd/wuphf/main.go and tests.
 func (l *Launcher) UsesTmuxRuntime() bool {
-	return !l.usesCodexRuntime()
+	return l.usesPaneRuntime()
 }
 
 func (l *Launcher) BrokerToken() string {
@@ -2155,7 +2177,7 @@ func (l *Launcher) Kill() error {
 	// still alive to release any open handles (harmless, but principle of
 	// least surprise).
 	l.cleanupAgentTempFiles()
-	if l.usesCodexRuntime() {
+	if !l.usesPaneRuntime() {
 		if err := killPersistedOfficeProcess(); err != nil {
 			return err
 		}
@@ -2176,7 +2198,7 @@ func (l *Launcher) Kill() error {
 }
 
 func (l *Launcher) ResetSession() error {
-	if l.usesCodexRuntime() {
+	if !l.requiresClaudeSessionReset() {
 		if l != nil && l.broker != nil {
 			l.broker.Reset()
 			return nil
@@ -2200,7 +2222,7 @@ func (l *Launcher) ResetSession() error {
 }
 
 func (l *Launcher) ReconfigureSession() error {
-	if l.usesCodexRuntime() {
+	if !l.usesPaneRuntime() {
 		if err := provider.ResetClaudeSessions(); err != nil {
 			return fmt.Errorf("reset Claude sessions: %w", err)
 		}
@@ -2215,7 +2237,7 @@ func (l *Launcher) ReconfigureSession() error {
 
 func (l *Launcher) reconfigureVisibleAgents() error {
 	l.provider = config.ResolveLLMProvider("")
-	if l.usesCodexRuntime() {
+	if !l.usesPaneRuntime() {
 		if l.paneBackedAgents {
 			_ = exec.Command("tmux", "-L", tmuxSocketName, "kill-session", "-t", l.sessionName).Run()
 			l.paneBackedAgents = false
@@ -2896,7 +2918,7 @@ func (l *Launcher) sendChannelUpdate(target notificationTarget, msg channelMessa
 // Codex runtime is always headless. Pane-backed interactive dispatch is only
 // used when the fallback path explicitly brought panes up (paneBackedAgents).
 func (l *Launcher) shouldUseHeadlessDispatch() bool {
-	if l.usesCodexRuntime() {
+	if !l.usesPaneRuntime() {
 		return true
 	}
 	return !l.paneBackedAgents
@@ -3552,8 +3574,9 @@ func (l *Launcher) trySpawnWebAgentPanes() {
 	if l.broker == nil {
 		return
 	}
-	// Codex runtime uses its own headless pipeline; panes don't apply.
-	if l.usesCodexRuntime() {
+	// Non-pane runtimes (Codex, future Ollama/vLLM/exo/openai-compat) use the
+	// headless pipeline; panes don't apply.
+	if !l.usesPaneRuntime() {
 		return
 	}
 	if _, err := exec.LookPath("tmux"); err != nil {
