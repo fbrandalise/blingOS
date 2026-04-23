@@ -604,7 +604,9 @@ func configureServerTools(server *mcp.Server, slug string, channel string, oneOn
 			"Return the canonical runtime snapshot for this direct session, including tasks, pending human requests, recovery summary, and runtime capabilities.",
 		), handleTeamRuntimeState)
 
-		registerActionTools(server)
+		if hasActionProvider() {
+			registerActionTools(server)
+		}
 		return
 	}
 
@@ -637,7 +639,9 @@ func configureServerTools(server *mcp.Server, slug string, channel string, oneOn
 			"team_skill_run",
 			"Invoke a named team skill. When the human's request matches an available skill, call this BEFORE replying — do not freelance. Bumps the skill's usage, logs a skill_invocation to the channel, and returns the skill's canonical step-by-step content for you to follow.",
 		), handleTeamSkillRun)
-		registerActionTools(server)
+		if hasActionProvider() {
+			registerActionTools(server)
+		}
 		return
 	}
 

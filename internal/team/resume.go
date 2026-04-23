@@ -151,7 +151,10 @@ func (l *Launcher) buildResumePackets() map[string]string {
 		fresh := unanswered[:0]
 		for _, msg := range unanswered {
 			ts, err := time.Parse(time.RFC3339, msg.Timestamp)
-			if err == nil && ts.Before(cutoff) {
+			if err != nil {
+				continue
+			}
+			if ts.Before(cutoff) {
 				continue
 			}
 			fresh = append(fresh, msg)

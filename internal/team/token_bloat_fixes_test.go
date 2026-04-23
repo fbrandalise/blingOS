@@ -15,7 +15,8 @@ import (
 // ignored, so this enforces it at the persistence layer.
 func TestDuplicateAgentBroadcastIsSuppressed(t *testing.T) {
 	oldPathFn := brokerStatePath
-	brokerStatePath = func() string { return filepath.Join(t.TempDir(), "broker-state.json") }
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
 	defer func() { brokerStatePath = oldPathFn }()
 
 	b := NewBroker()
@@ -62,7 +63,8 @@ func TestDuplicateAgentBroadcastIsSuppressed(t *testing.T) {
 // bounded — a follow-up beyond the window posts normally.
 func TestDuplicateAgentBroadcastWindowExpires(t *testing.T) {
 	oldPathFn := brokerStatePath
-	brokerStatePath = func() string { return filepath.Join(t.TempDir(), "broker-state.json") }
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
 	defer func() { brokerStatePath = oldPathFn }()
 
 	b := NewBroker()
@@ -85,7 +87,8 @@ func TestDuplicateAgentBroadcastWindowExpires(t *testing.T) {
 // the wrong intent).
 func TestStaleUnansweredFilteredOnResume(t *testing.T) {
 	oldPathFn := brokerStatePath
-	brokerStatePath = func() string { return filepath.Join(t.TempDir(), "broker-state.json") }
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
 	defer func() { brokerStatePath = oldPathFn }()
 
 	// This test runs with the production-like threshold, not the test-suite
@@ -101,6 +104,7 @@ func TestStaleUnansweredFilteredOnResume(t *testing.T) {
 	b.messages = []channelMessage{
 		{ID: "h1", From: "you", Channel: "general", Content: "stale — ignore", Tagged: []string{"planner"}, Timestamp: stale},
 		{ID: "h2", From: "you", Channel: "general", Content: "fresh — answer", Tagged: []string{"planner"}, Timestamp: fresh},
+		{ID: "h3", From: "you", Channel: "general", Content: "malformed — ignore", Tagged: []string{"planner"}, Timestamp: "not-a-time"},
 	}
 	b.mu.Unlock()
 
@@ -114,6 +118,9 @@ func TestStaleUnansweredFilteredOnResume(t *testing.T) {
 	} else {
 		if strings.Contains(p, "stale — ignore") {
 			t.Error("stale message must not appear in resume packet")
+		}
+		if strings.Contains(p, "malformed — ignore") {
+			t.Error("messages with malformed timestamps must not appear in resume packet")
 		}
 		if !strings.Contains(p, "fresh — answer") {
 			t.Error("fresh message must appear in resume packet")

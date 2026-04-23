@@ -10,8 +10,8 @@ import (
 
 // TestWriteHeadlessOpencodeMCPConfigConcurrent verifies that concurrent calls
 // to writeHeadlessOpencodeMCPConfig (as happen when CEO + planner + reviewer
-// all spawn at the same time) never produce a truncated or double-braced JSON
-// file. The fix is an atomic temp-file-then-rename write.
+// all spawn at the same time) write agent-scoped configs with the right MCP
+// environment instead of racing to rewrite one shared opencode.json.
 func TestWriteHeadlessOpencodeMCPConfigConcurrent(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -38,32 +38,71 @@ func TestWriteHeadlessOpencodeMCPConfigConcurrent(t *testing.T) {
 	l := &Launcher{}
 
 	const goroutines = 20
+	slugs := []string{"ceo", "planner", "reviewer"}
+	paths := make(map[string]string)
+	var pathsMu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 	for i := 0; i < goroutines; i++ {
 		go func(slug string) {
 			defer wg.Done()
-			if err := l.writeHeadlessOpencodeMCPConfig(slug); err != nil {
+			path, err := l.writeHeadlessOpencodeMCPConfig(slug)
+			if err != nil {
 				t.Errorf("writeHeadlessOpencodeMCPConfig(%q): %v", slug, err)
+				return
 			}
-		}([]string{"ceo", "planner", "reviewer"}[i%3])
+			pathsMu.Lock()
+			paths[slug] = path
+			pathsMu.Unlock()
+		}(slugs[i%len(slugs)])
 	}
 	wg.Wait()
 
 	raw, err := os.ReadFile(configPath)
 	if err != nil {
-		t.Fatalf("read opencode.json after concurrent writes: %v", err)
+		t.Fatalf("read base opencode.json after concurrent writes: %v", err)
 	}
-	var out map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
-		t.Fatalf("opencode.json is not valid JSON after concurrent writes: %v\n\ncontent:\n%s", err, raw)
+	var base map[string]any
+	if err := json.Unmarshal(raw, &base); err != nil {
+		t.Fatalf("base opencode.json is not valid JSON after concurrent writes: %v\n\ncontent:\n%s", err, raw)
 	}
-	// The wuphf-office MCP entry must be present.
-	mcp, _ := out["mcp"].(map[string]any)
-	if mcp == nil {
-		t.Fatal("mcp key missing from opencode.json after concurrent writes")
+	if _, ok := base["mcp"]; ok {
+		t.Fatal("base opencode.json should not be rewritten with WUPHF's agent-scoped MCP entry")
 	}
-	if _, ok := mcp["wuphf-office"]; !ok {
-		t.Fatal("mcp.wuphf-office missing from opencode.json after concurrent writes")
+
+	for _, slug := range slugs {
+		path := paths[slug]
+		if path == "" {
+			t.Fatalf("missing generated config path for %s", slug)
+		}
+		if want := headlessOpencodeAgentConfigPath(home, slug); path != want {
+			t.Fatalf("config path for %s = %q, want %q", slug, path, want)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s config: %v", slug, err)
+		}
+		var out map[string]any
+		if err := json.Unmarshal(raw, &out); err != nil {
+			t.Fatalf("%s config is not valid JSON after concurrent writes: %v\n\ncontent:\n%s", slug, err, raw)
+		}
+		if out["theme"] != "dark" {
+			t.Fatalf("%s config did not preserve theme: %#v", slug, out["theme"])
+		}
+		mcp, _ := out["mcp"].(map[string]any)
+		if mcp == nil {
+			t.Fatalf("mcp key missing from %s config", slug)
+		}
+		wuphfOffice, _ := mcp["wuphf-office"].(map[string]any)
+		if wuphfOffice == nil {
+			t.Fatalf("mcp.wuphf-office missing from %s config", slug)
+		}
+		env, _ := wuphfOffice["environment"].(map[string]any)
+		if env == nil {
+			t.Fatalf("mcp.wuphf-office.environment missing from %s config", slug)
+		}
+		if env["WUPHF_AGENT_SLUG"] != slug {
+			t.Fatalf("%s config has WUPHF_AGENT_SLUG=%#v", slug, env["WUPHF_AGENT_SLUG"])
+		}
 	}
 }

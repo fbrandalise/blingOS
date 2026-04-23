@@ -535,7 +535,8 @@ type Broker struct {
 	lastAgentRateLimitPrune time.Time
 	agentLogRoot            string // override for tests; empty means agent.DefaultTaskLogRoot()
 
-	stopCh chan struct{} // closed by Stop(); signals background goroutines to exit
+	stopCh   chan struct{} // closed by Stop(); signals background goroutines to exit
+	stopOnce sync.Once
 }
 
 func taskNeedsLocalWorktree(task *teamTask) bool {
@@ -1531,7 +1532,9 @@ func (b *Broker) StartOnPort(port int) error {
 // Stop shuts down the broker.
 func (b *Broker) Stop() {
 	if b.stopCh != nil {
-		close(b.stopCh)
+		b.stopOnce.Do(func() {
+			close(b.stopCh)
+		})
 	}
 	if b.server != nil {
 		_ = b.server.Close()
@@ -7390,10 +7393,15 @@ func (b *Broker) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 	sender := normalizeActorSlug(body.From)
 	isHuman := sender == "" || sender == "you" || sender == "human"
 	leadSlug := officeLeadSlugFrom(b.members)
+	mentionedSlugs := extractMentionedSlugs(body.Content)
 	leadExplicitlyTagged := leadSlug != "" && containsString(tagged, leadSlug)
+	if isHuman && !leadExplicitlyTagged && leadSlug != "" && containsString(mentionedSlugs, leadSlug) && b.findMemberLocked(leadSlug) != nil {
+		tagged = append(tagged, leadSlug)
+		leadExplicitlyTagged = true
+	}
 	suppressAutoPromote := isHuman && leadExplicitlyTagged
 	if b.senderMayAutoPromoteLocked(sender) && !suppressAutoPromote {
-		for _, slug := range extractMentionedSlugs(body.Content) {
+		for _, slug := range mentionedSlugs {
 			if slug == sender {
 				continue
 			}

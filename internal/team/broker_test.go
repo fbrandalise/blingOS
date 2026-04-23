@@ -476,7 +476,8 @@ func TestBrokerActionSubscribersReceiveTaskLifecycle(t *testing.T) {
 
 func TestReapStaleActivityLocked(t *testing.T) {
 	oldPathFn := brokerStatePath
-	brokerStatePath = func() string { return filepath.Join(t.TempDir(), "broker-state.json") }
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
 	defer func() { brokerStatePath = oldPathFn }()
 
 	b := NewBroker()
@@ -515,9 +516,23 @@ func TestReapStaleActivityLocked(t *testing.T) {
 	if b.activity["already-idle"].Status != "idle" {
 		t.Error("already-idle should be unchanged")
 	}
+	if b.activity["already-error"].Status != "error" {
+		t.Error("already-error should be unchanged")
+	}
 	if b.activity["bad-time"].Status != "active" {
 		t.Error("unparseable LastTime should be left alone")
 	}
+}
+
+func TestBrokerStopIsIdempotent(t *testing.T) {
+	oldPathFn := brokerStatePath
+	tmpDir := t.TempDir()
+	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
+	defer func() { brokerStatePath = oldPathFn }()
+
+	b := NewBroker()
+	b.Stop()
+	b.Stop()
 }
 
 func TestBrokerActivitySubscribersReceiveUpdates(t *testing.T) {
