@@ -31,6 +31,11 @@ type processedTurn struct {
 func TestNewLauncherUsesCodexProviderFromConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// Pair HOME with WUPHF_RUNTIME_HOME so resetManifestToPack writes into
+	// this test's tmpdir instead of the process-level leaked runtime home
+	// installed by worktree_guard_test's init — that leak pollutes
+	// downstream tests that read company.json via NewBroker.
+	t.Setenv("WUPHF_RUNTIME_HOME", home)
 	t.Setenv("WUPHF_BROKER_TOKEN", "")
 	if err := config.Save(config.Config{LLMProvider: "codex"}); err != nil {
 		t.Fatalf("save config: %v", err)
@@ -51,6 +56,10 @@ func TestNewLauncherUsesCodexProviderFromConfig(t *testing.T) {
 func TestNewLauncherAcceptsOperationBlueprintID(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// Pair HOME with WUPHF_RUNTIME_HOME so resetManifestToOperationBlueprint
+	// writes into this test's tmpdir, not the process-level leaked runtime
+	// home from worktree_guard_test's init.
+	t.Setenv("WUPHF_RUNTIME_HOME", home)
 	t.Setenv("WUPHF_BROKER_TOKEN", "")
 	if err := config.Save(config.Config{LLMProvider: "codex"}); err != nil {
 		t.Fatalf("save config: %v", err)
@@ -874,11 +883,9 @@ func newHeadlessLauncherForTest() *Launcher {
 
 func TestFinishHeadlessTurnWakesLeadWhenAllSpecialistsDone(t *testing.T) {
 	woken := make(chan string, 4)
-	oldWakeLead := headlessWakeLeadFn
-	headlessWakeLeadFn = func(_ *Launcher, specialistSlug string) {
+	setHeadlessWakeLeadFn(t, func(_ *Launcher, specialistSlug string) {
 		woken <- specialistSlug
-	}
-	defer func() { headlessWakeLeadFn = oldWakeLead }()
+	})
 
 	l := newHeadlessLauncherForTest()
 
@@ -893,11 +900,9 @@ func TestFinishHeadlessTurnWakesLeadWhenAllSpecialistsDone(t *testing.T) {
 
 func TestFinishHeadlessTurnDoesNotWakeLeadWhenOtherSpecialistsActive(t *testing.T) {
 	woken := make(chan string, 4)
-	oldWakeLead := headlessWakeLeadFn
-	headlessWakeLeadFn = func(_ *Launcher, specialistSlug string) {
+	setHeadlessWakeLeadFn(t, func(_ *Launcher, specialistSlug string) {
 		woken <- specialistSlug
-	}
-	defer func() { headlessWakeLeadFn = oldWakeLead }()
+	})
 
 	l := newHeadlessLauncherForTest()
 	// "be" is still active while "fe" finishes.
@@ -915,11 +920,9 @@ func TestFinishHeadlessTurnDoesNotWakeLeadWhenOtherSpecialistsActive(t *testing.
 
 func TestFinishHeadlessTurnDoesNotWakeLeadWhenLeadFinishes(t *testing.T) {
 	woken := make(chan string, 4)
-	oldWakeLead := headlessWakeLeadFn
-	headlessWakeLeadFn = func(_ *Launcher, specialistSlug string) {
+	setHeadlessWakeLeadFn(t, func(_ *Launcher, specialistSlug string) {
 		woken <- specialistSlug
-	}
-	defer func() { headlessWakeLeadFn = oldWakeLead }()
+	})
 
 	l := newHeadlessLauncherForTest()
 	// CEO finishes — should not self-wake.
@@ -935,11 +938,9 @@ func TestFinishHeadlessTurnDoesNotWakeLeadWhenLeadFinishes(t *testing.T) {
 
 func TestFinishHeadlessTurnDoesNotWakeLeadWhenLeadAlreadyQueued(t *testing.T) {
 	woken := make(chan string, 4)
-	oldWakeLead := headlessWakeLeadFn
-	headlessWakeLeadFn = func(_ *Launcher, specialistSlug string) {
+	setHeadlessWakeLeadFn(t, func(_ *Launcher, specialistSlug string) {
 		woken <- specialistSlug
-	}
-	defer func() { headlessWakeLeadFn = oldWakeLead }()
+	})
 
 	l := newHeadlessLauncherForTest()
 	// CEO already has a pending turn.
@@ -1626,19 +1627,25 @@ func TestHeadlessTurnCompletedDurablyRejectsCodingTurnWithoutTaskStateOrEvidence
 	}
 	defer func() { headlessCodexWorkspaceStatusSnapshot = oldSnapshot }()
 
+	// Build the task state directly instead of going through
+	// EnsurePlannedTask so we never call saveLocked — the broker-state
+	// save path races with leaked goroutines from earlier tests that
+	// read the swapped brokerStatePath global (rename .tmp -> final
+	// fails mid-flight). We don't need persistence here; we only need
+	// the task fields that headlessTurnCompletedDurably reads.
 	b := NewBroker()
-	ensureTestMemberAccess(b, "general", "builder", "Builder")
-	task, reused, err := b.EnsurePlannedTask(plannedTaskInput{
+	b.mu.Lock()
+	b.tasks = []teamTask{{
+		ID:            "task-1",
 		Channel:       "general",
 		Title:         "Implement the durable turn guard",
 		Owner:         "eng",
-		CreatedBy:     "ceo",
+		Status:        "open",
 		TaskType:      "feature",
 		ExecutionMode: "local_worktree",
-	})
-	if err != nil || reused {
-		t.Fatalf("ensure planned task: %v reused=%v", err, reused)
-	}
+	}}
+	task := b.tasks[0]
+	b.mu.Unlock()
 
 	l := newHeadlessLauncherForTest()
 	l.broker = b
@@ -1668,26 +1675,22 @@ func TestHeadlessTurnCompletedDurablyAcceptsReviewReadyTask(t *testing.T) {
 	}
 	defer func() { headlessCodexWorkspaceStatusSnapshot = oldSnapshot }()
 
+	// See TestHeadlessTurnCompletedDurablyRejectsCodingTurn... for why
+	// we build the task state directly rather than via EnsurePlannedTask.
 	b := NewBroker()
-	task, reused, err := b.EnsurePlannedTask(plannedTaskInput{
+	b.mu.Lock()
+	b.tasks = []teamTask{{
+		ID:            "task-1",
 		Channel:       "general",
 		Title:         "Implement the durable turn guard",
 		Owner:         "eng",
-		CreatedBy:     "ceo",
+		Status:        "review",
+		ReviewState:   "ready_for_review",
 		TaskType:      "feature",
 		ExecutionMode: "local_worktree",
-	})
-	if err != nil || reused {
-		t.Fatalf("ensure planned task: %v reused=%v", err, reused)
-	}
-	for i := range b.tasks {
-		if b.tasks[i].ID != task.ID {
-			continue
-		}
-		b.tasks[i].Status = "review"
-		b.tasks[i].ReviewState = "ready_for_review"
-		break
-	}
+	}}
+	task := b.tasks[0]
+	b.mu.Unlock()
 
 	l := newHeadlessLauncherForTest()
 	l.broker = b
@@ -1924,9 +1927,18 @@ func TestRunHeadlessCodexQueueRetriesLocalWorktreeAfterGenericError(t *testing.T
 	brokerStatePath = func() string { return filepath.Join(tmpDir, "broker-state.json") }
 	defer func() { brokerStatePath = oldPathFn }()
 
-	oldWakeLead := headlessWakeLeadFn
-	headlessWakeLeadFn = func(_ *Launcher, _ string) {}
-	defer func() { headlessWakeLeadFn = oldWakeLead }()
+	oldPrepare := prepareTaskWorktree
+	oldCleanup := cleanupTaskWorktree
+	prepareTaskWorktree = func(taskID string) (string, string, error) {
+		return filepath.Join(tmpDir, "wuphf-task-"+taskID), "wuphf-" + taskID, nil
+	}
+	cleanupTaskWorktree = func(string, string) error { return nil }
+	defer func() {
+		prepareTaskWorktree = oldPrepare
+		cleanupTaskWorktree = oldCleanup
+	}()
+
+	setHeadlessWakeLeadFn(t, func(_ *Launcher, _ string) {})
 
 	b := NewBroker()
 	task, reused, err := b.EnsurePlannedTask(plannedTaskInput{
@@ -2077,6 +2089,17 @@ func TestEnqueueHeadlessCodexTurnBypassesLeadHoldForReviewReadyTask(t *testing.T
 	stateDir := t.TempDir()
 	brokerStatePath = func() string { return filepath.Join(stateDir, "broker-state.json") }
 	defer func() { brokerStatePath = oldStatePath }()
+
+	oldPrepare := prepareTaskWorktree
+	oldCleanup := cleanupTaskWorktree
+	prepareTaskWorktree = func(taskID string) (string, string, error) {
+		return filepath.Join(stateDir, "wuphf-task-"+taskID), "wuphf-" + taskID, nil
+	}
+	cleanupTaskWorktree = func(string, string) error { return nil }
+	defer func() {
+		prepareTaskWorktree = oldPrepare
+		cleanupTaskWorktree = oldCleanup
+	}()
 
 	b := NewBroker()
 	task, reused, err := b.EnsurePlannedTask(plannedTaskInput{

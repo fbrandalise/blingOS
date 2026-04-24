@@ -94,6 +94,20 @@ func TestMain(m *testing.M) {
 	os.Exit(rc)
 }
 
+// reloadedBroker constructs a Broker and replays state from brokerStatePath
+// so persistence tests can verify what a production restart would see.
+// Test-mode NewBroker skips the automatic disk load (to stop cross-test
+// state leakage via a shared broker-state.json), so any test that checks
+// persistence behavior must opt in through this helper.
+func reloadedBroker(t *testing.T) *Broker {
+	t.Helper()
+	b := NewBroker()
+	if err := b.loadState(); err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
+	return b
+}
+
 // leakedBrokerStatePath returns a per-test-unique filesystem path for a
 // broker-state.json, rooted in a temp dir OUTSIDE t.TempDir(). Callers use
 // it to swap the package-global brokerStatePath without exposing t.TempDir
@@ -112,6 +126,22 @@ func leakedBrokerStatePath(t *testing.T) string {
 		t.Fatalf("mktemp broker state dir: %v", err)
 	}
 	return filepath.Join(dir, "broker-state.json")
+}
+
+// setHeadlessWakeLeadFn swaps headlessWakeLeadFn under its mutex and restores
+// the previous value on test cleanup. Use this instead of direct assignment to
+// avoid DATA RACEs with leaked runHeadlessCodexQueue goroutines from prior tests.
+func setHeadlessWakeLeadFn(t *testing.T, fn func(*Launcher, string)) {
+	t.Helper()
+	headlessWakeLeadFnMu.Lock()
+	old := headlessWakeLeadFn
+	headlessWakeLeadFn = fn
+	headlessWakeLeadFnMu.Unlock()
+	t.Cleanup(func() {
+		headlessWakeLeadFnMu.Lock()
+		headlessWakeLeadFn = old
+		headlessWakeLeadFnMu.Unlock()
+	})
 }
 
 func initUsableGitWorktree(t *testing.T, path string) {
@@ -154,7 +184,7 @@ func TestBrokerPersistsAndReloadsState(t *testing.T) {
 	}
 	b.mu.Unlock()
 
-	reloaded := NewBroker()
+	reloaded := reloadedBroker(t)
 	msgs := reloaded.Messages()
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 persisted message, got %d", len(msgs))
@@ -164,7 +194,7 @@ func TestBrokerPersistsAndReloadsState(t *testing.T) {
 	}
 
 	reloaded.Reset()
-	empty := NewBroker()
+	empty := reloadedBroker(t)
 	if len(empty.Messages()) != 0 {
 		t.Fatalf("expected reset to clear persisted messages, got %d", len(empty.Messages()))
 	}
@@ -192,7 +222,7 @@ func TestBrokerLoadsLastGoodSnapshotWhenPrimaryStateIsClobbered(t *testing.T) {
 	}
 
 	// Simulate a later clobber that keeps the custom office shell but loses live work.
-	clobbered := NewBroker()
+	clobbered := reloadedBroker(t)
 	clobbered.mu.Lock()
 	clobbered.messages = nil
 	clobbered.tasks = nil
@@ -220,7 +250,7 @@ func TestBrokerLoadsLastGoodSnapshotWhenPrimaryStateIsClobbered(t *testing.T) {
 		t.Fatalf("unexpected snapshot contents: %+v", snap)
 	}
 
-	reloaded := NewBroker()
+	reloaded := reloadedBroker(t)
 	if got := len(reloaded.Messages()); got != 1 {
 		t.Fatalf("expected snapshot recovery to restore 1 message, got %d", got)
 	}
@@ -258,7 +288,7 @@ func TestBrokerSessionModePersistsAndSurvivesReset(t *testing.T) {
 		t.Fatalf("seed direct message: %v", err)
 	}
 
-	reloaded := NewBroker()
+	reloaded := reloadedBroker(t)
 	mode, agent := reloaded.SessionModeState()
 	if mode != SessionModeOneOnOne {
 		t.Fatalf("expected persisted 1o1 mode, got %q", mode)
@@ -853,6 +883,11 @@ func TestNewBrokerSeedsDefaultOfficeRosterOnFreshState(t *testing.T) {
 func TestNewBrokerSeedsBlueprintBackedOfficeRosterOnFreshState(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// Pair HOME with WUPHF_RUNTIME_HOME so config.RuntimeHomeDir (which
+	// prefers the env override) resolves to this test's tmpdir. Without
+	// it the process-level leaked runtime-home from worktree_guard_test
+	// wins and the manifest below is invisible to the blueprint loader.
+	t.Setenv("WUPHF_RUNTIME_HOME", home)
 	manifestPath := filepath.Join(home, ".wuphf", "company.json")
 	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o700); err != nil {
 		t.Fatalf("mkdir manifest dir: %v", err)
@@ -990,7 +1025,7 @@ func TestOfficeMemberLifecycle(t *testing.T) {
 	}
 	b.mu.Unlock()
 
-	reloaded := NewBroker()
+	reloaded := reloadedBroker(t)
 	if reloaded.findMemberLocked("growthops") == nil {
 		t.Fatal("expected custom office member to persist")
 	}
@@ -1007,7 +1042,7 @@ func TestBrokerPersistsNotificationCursorWithoutMessages(t *testing.T) {
 		t.Fatalf("SetNotificationCursor failed: %v", err)
 	}
 
-	reloaded := NewBroker()
+	reloaded := reloadedBroker(t)
 	if got := reloaded.NotificationCursor(); got != "2026-03-24T10:00:00Z" {
 		t.Fatalf("expected persisted notification cursor, got %q", got)
 	}
@@ -5195,7 +5230,7 @@ func TestBrokerSurfaceMetadataPersists(t *testing.T) {
 	}
 	b.mu.Unlock()
 
-	reloaded := NewBroker()
+	reloaded := reloadedBroker(t)
 	var found *teamChannel
 	for _, ch := range reloaded.channels {
 		if ch.Slug == "tg-ops" {
@@ -6026,7 +6061,7 @@ func TestSkillProposalPersistenceRoundTrip(t *testing.T) {
 	}
 	b.mu.Unlock()
 
-	reloaded := NewBroker()
+	reloaded := reloadedBroker(t)
 	reloaded.mu.Lock()
 	skills := append([]teamSkill(nil), reloaded.skills...)
 	requests := append([]humanInterview(nil), reloaded.requests...)
@@ -6470,7 +6505,7 @@ func TestLoadDoesNotAppendDefaultsAfterBlueprintSeed(t *testing.T) {
 	}
 	b.mu.Unlock()
 
-	reloaded := NewBroker()
+	reloaded := reloadedBroker(t)
 	reloaded.mu.Lock()
 	slugs := make([]string, 0, len(reloaded.members))
 	for _, m := range reloaded.members {
