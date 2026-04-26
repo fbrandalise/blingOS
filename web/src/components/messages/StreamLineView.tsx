@@ -16,8 +16,13 @@ interface StreamLineViewProps {
  */
 export function StreamLineView({ line, compact = false }: StreamLineViewProps) {
   if (!line.parsed) {
+    // Raw chunks from agentStream.Push (local-LLM streaming text). The
+    // useAgentStream hook coalesces consecutive raw events into a
+    // single StreamLine, so this branch renders the running model
+    // output as a continuous text block \u2014 not one chunk per row.
+    // Trailing ellipsis keeps the live-output panel visually capped.
     const text =
-      line.data.length > 400 ? `${line.data.slice(0, 400)}\u2026` : line.data;
+      line.data.length > 1200 ? `${line.data.slice(0, 1200)}\u2026` : line.data;
     return <div className="stream-line stream-line-raw">{text}</div>;
   }
 
@@ -316,7 +321,14 @@ function ToolCallCard({
     "tool";
   const args = objectFromToolField(item.arguments ?? item.args);
   const result = normalizeToolResult(item.result);
-  const errorField = item.error;
+  // The tool-event payload omits `error` for successful calls, so the
+  // field arrives as undefined (not null). The previous `!== null`
+  // gate let undefined through and rendered an "× ERROR / undefined"
+  // chip for every successful tool call. Treat null AND undefined AND
+  // the empty string as "no error".
+  const hasError =
+    item.error !== null && item.error !== undefined && item.error !== "";
+  const errorField = hasError ? item.error : null;
 
   const { summaryArg, summaryResult, summaryError } = useMemo(() => {
     const pick = [
@@ -358,7 +370,7 @@ function ToolCallCard({
     }
 
     let sumError = "";
-    if (errorField !== null) {
+    if (hasError) {
       sumError =
         typeof errorField === "string" ? errorField.slice(0, 60) : "Error";
     }
@@ -368,7 +380,7 @@ function ToolCallCard({
       summaryResult: sumResult,
       summaryError: sumError,
     };
-  }, [args, result, errorField]);
+  }, [args, result, errorField, hasError]);
 
   const cleanArgs = useMemo<Record<string, unknown>>(() => {
     const out: Record<string, unknown> = {};
@@ -421,7 +433,7 @@ function ToolCallCard({
                 ))}
               </>
             )}
-          {errorField !== null && (
+          {hasError && (
             <>
               <div className="cc-tool-section-label cc-tool-error">
                 {"\u2717 Error"}

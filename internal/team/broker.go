@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1590,6 +1591,7 @@ func (b *Broker) StartOnPort(port int) error {
 	mux.HandleFunc("/queue", b.requireAuth(b.handleQueue))
 	mux.HandleFunc("/company", b.requireAuth(b.handleCompany))
 	mux.HandleFunc("/config", b.requireAuth(b.handleConfig))
+	mux.HandleFunc("/status/local-providers", b.requireAuth(b.handleLocalProvidersStatus))
 	mux.HandleFunc("/nex/register", b.requireAuth(b.handleNexRegister))
 	mux.HandleFunc("/v1/logs", b.requireAuth(b.handleOTLPLogs))
 	mux.HandleFunc("/events", b.handleEvents)
@@ -5943,6 +5945,44 @@ func (b *Broker) handleCompany(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// validateProviderEndpointURL gates user-supplied base URLs persisted
+// to ~/.wuphf/config.json so a locally-authenticated client can't
+// pivot future agent turns to attacker-controlled targets via
+// schemes our HTTP client doesn't service (or persist URLs that
+// would surprise users on next launch). Allowed: http://… and
+// https://… with a non-empty host. Rejected: file://, gopher://,
+// unix://, schemeless paths, hostless URLs, raw IPs without scheme,
+// userinfo-only URLs, etc.
+//
+// Loopback hosts are allowed — wuphf's whole point is local-LLM
+// pointing at 127.0.0.1, and the runtime probe code already gates
+// reachability scans on isLoopbackBaseURL elsewhere. The threat we
+// care about here is "URL the agent runner will later POST a
+// system prompt + conversation to," which is governed by scheme +
+// host, not by loopback-vs-public.
+func validateProviderEndpointURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("malformed URL: %w", err)
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+		// ok
+	case "":
+		return fmt.Errorf("missing scheme (must be http or https)")
+	default:
+		return fmt.Errorf("unsupported scheme %q (must be http or https)", u.Scheme)
+	}
+	// Use Hostname() not Host: url.Parse("http://:8080") yields
+	// Host=":8080" but Hostname()="", so checking Host would let a
+	// port-only URL through and persist a hostless endpoint that
+	// fails later at request time.
+	if strings.TrimSpace(u.Hostname()) == "" {
+		return fmt.Errorf("missing host")
+	}
+	return nil
+}
+
 // handleConfig exposes GET/POST over ~/.wuphf/config.json for the web UI
 // settings page and onboarding wizard. All POST fields are optional; clients
 // can update one without touching the others. Secret fields (API keys, tokens)
@@ -5960,6 +6000,7 @@ func (b *Broker) handleConfig(w http.ResponseWriter, r *http.Request) {
 			// Runtime
 			"llm_provider":          config.ResolveLLMProvider(""),
 			"llm_provider_priority": cfg.LLMProviderPriority,
+			"provider_endpoints":    cfg.ProviderEndpoints,
 			"memory_backend":        config.ResolveMemoryBackend(""),
 			"action_provider":       config.ResolveActionProvider(),
 			"team_lead_slug":        cfg.TeamLeadSlug,
@@ -6034,21 +6075,40 @@ func (b *Broker) handleConfig(w http.ResponseWriter, r *http.Request) {
 			TelegramToken   *string `json:"telegram_bot_token,omitempty"`
 			OpenclawToken   *string `json:"openclaw_token,omitempty"`
 			OpenclawGateway *string `json:"openclaw_gateway_url,omitempty"`
+			// ProviderEndpoints is a partial-update map: keys present in
+			// the payload replace the corresponding entry; absent keys are
+			// preserved. Pass an empty value (`{"base_url":"","model":""}`)
+			// to clear a kind back to its compile-time defaults.
+			ProviderEndpoints *map[string]config.ProviderEndpoint `json:"provider_endpoints,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 
-		// Validate enum fields before touching config.
-		var provider string
+		// Validate enum fields before touching config. The "global LLM
+		// provider" surface (llm_provider, llm_provider_priority, and
+		// the provider_endpoints map keys) must use
+		// config.IsLLMProviderKindAllowed — provider.ValidateKind is
+		// broader and accepts member-only kinds like openclaw that the
+		// runtime launcher can't dispatch as a global default. Per-
+		// member binding kinds keep ValidateKind below.
+		//
+		// Nil pointer vs empty string: a nil body field means "the
+		// client didn't send it, leave the saved value alone"; an
+		// explicit empty string means "clear my override and fall back
+		// to the install default". Both must round-trip.
+		var (
+			llmProvider    string
+			llmProviderSet bool
+		)
 		if body.LLMProvider != nil {
-			provider = strings.TrimSpace(strings.ToLower(*body.LLMProvider))
-			switch provider {
-			case "claude-code", "codex", "opencode":
-				// ok
-			default:
-				http.Error(w, "unsupported llm_provider", http.StatusBadRequest)
+			llmProviderSet = true
+			llmProvider = strings.TrimSpace(strings.ToLower(*body.LLMProvider))
+			if llmProvider != "" && !config.IsLLMProviderKindAllowed(llmProvider) {
+				http.Error(w, "unsupported llm_provider "+strconv.Quote(llmProvider)+
+					" (allowed: "+strings.Join(config.AllowedLLMProviderKinds(), ", ")+")",
+					http.StatusBadRequest)
 				return
 			}
 		}
@@ -6063,11 +6123,10 @@ func (b *Broker) handleConfig(w http.ResponseWriter, r *http.Request) {
 				if id == "" {
 					continue
 				}
-				switch id {
-				case "claude-code", "codex", "opencode":
-					// ok
-				default:
-					http.Error(w, "unsupported entry in llm_provider_priority: "+id, http.StatusBadRequest)
+				if !config.IsLLMProviderKindAllowed(id) {
+					http.Error(w, "unsupported entry in llm_provider_priority: "+strconv.Quote(id)+
+						" (allowed: "+strings.Join(config.AllowedLLMProviderKinds(), ", ")+")",
+						http.StatusBadRequest)
 					return
 				}
 				if seen[id] {
@@ -6089,9 +6148,14 @@ func (b *Broker) handleConfig(w http.ResponseWriter, r *http.Request) {
 		cfg, _ := config.Load()
 		changed := false
 
-		// Enum/string fields
-		if provider != "" {
-			cfg.LLMProvider = provider
+		// Enum/string fields. `llmProviderSet` distinguishes "client
+		// sent the field with a value" (use it) and "client sent the
+		// field with empty string" (clear back to install default)
+		// from "client didn't send the field" (leave alone). Without
+		// this distinction the Settings UI couldn't drop a saved
+		// provider override.
+		if llmProviderSet {
+			cfg.LLMProvider = llmProvider
 			changed = true
 		}
 		if body.LLMProviderPriority != nil {
@@ -6238,6 +6302,65 @@ func (b *Broker) handleConfig(w http.ResponseWriter, r *http.Request) {
 			cfg.OpenclawGatewayURL = strings.TrimSpace(*body.OpenclawGateway)
 			changed = true
 		}
+		if body.ProviderEndpoints != nil {
+			// Partial merge: only kinds present in the payload are touched,
+			// so the Settings UI can update one runtime's endpoint without
+			// shipping the whole map. Validate each key against the
+			// registry — same source of truth as llm_provider. `changed`
+			// flips ONLY when at least one entry actually mutates state,
+			// so an empty-map payload (or one whose entries are all
+			// empty-key skips) doesn't force a config.Save round-trip.
+			if cfg.ProviderEndpoints == nil {
+				cfg.ProviderEndpoints = map[string]config.ProviderEndpoint{}
+			}
+			for kind, ep := range *body.ProviderEndpoints {
+				k := strings.TrimSpace(strings.ToLower(kind))
+				if k == "" {
+					continue
+				}
+				// provider_endpoints keys must be runnable global LLM
+				// kinds (mlx-lm/ollama/exo/claude-code/codex/...) —
+				// openclaw, while a valid per-member binding, has no
+				// HTTP base_url + model concept and must not get a row
+				// in this map.
+				if !config.IsLLMProviderKindAllowed(k) {
+					http.Error(w, "unsupported provider_endpoints kind: "+strconv.Quote(k)+
+						" (allowed: "+strings.Join(config.AllowedLLMProviderKinds(), ", ")+")",
+						http.StatusBadRequest)
+					return
+				}
+				ep.BaseURL = strings.TrimSpace(ep.BaseURL)
+				ep.Model = strings.TrimSpace(ep.Model)
+				// Security gate: a malicious authenticated client (or
+				// anyone with write access to ~/.wuphf/config.json) must
+				// not be able to redirect future agent turns to file://,
+				// gopher://, unix://, or schemeless URLs. Allow only the
+				// two URL families our HTTP client actually services
+				// (http, https) and require a non-empty host so a
+				// `http://` no-op can't slip through.
+				if ep.BaseURL != "" {
+					if err := validateProviderEndpointURL(ep.BaseURL); err != nil {
+						http.Error(w, "invalid provider_endpoints["+k+"].base_url: "+err.Error(), http.StatusBadRequest)
+						return
+					}
+				}
+				if ep.BaseURL == "" && ep.Model == "" {
+					// Treat the empty-empty case as a clear so the user can
+					// drop their override and fall back to compile-time
+					// defaults without hand-editing config.json.
+					if _, existed := cfg.ProviderEndpoints[k]; existed {
+						delete(cfg.ProviderEndpoints, k)
+						changed = true
+					}
+				} else {
+					prev, existed := cfg.ProviderEndpoints[k]
+					if !existed || prev != ep {
+						cfg.ProviderEndpoints[k] = ep
+						changed = true
+					}
+				}
+			}
+		}
 
 		if !changed {
 			http.Error(w, "no fields to update", http.StatusBadRequest)
@@ -6248,12 +6371,16 @@ func (b *Broker) handleConfig(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "save failed", http.StatusInternalServerError)
 			return
 		}
-		// Keep /health in sync for this process so the wizard choice is
-		// reflected immediately without requiring a broker restart.
-		if provider != "" {
+		// Keep /health in sync for this process so the wizard choice
+		// (or a clear back to default) is reflected immediately
+		// without requiring a broker restart. Use `llmProviderSet`
+		// for the same reason described at the write-back above —
+		// nil-vs-empty must round-trip, otherwise /health keeps
+		// reporting the stale provider after a clear.
+		if llmProviderSet {
 			b.mu.Lock()
-			providerChanged := b.runtimeProvider != provider
-			b.runtimeProvider = provider
+			providerChanged := b.runtimeProvider != llmProvider
+			b.runtimeProvider = llmProvider
 			if providerChanged {
 				b.publishOfficeChangeLocked(officeChangeEvent{Kind: "office_reseeded"})
 			}
