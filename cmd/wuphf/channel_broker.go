@@ -419,7 +419,8 @@ func pollTasks(channel string) tea.Cmd {
 		if err != nil {
 			return channelTasksMsg{}
 		}
-		resp, err := http.DefaultClient.Do(req)
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Do(req)
 		if err != nil {
 			return channelTasksMsg{}
 		}
@@ -478,7 +479,8 @@ func pollActions() tea.Cmd {
 		if err != nil {
 			return channelActionsMsg{}
 		}
-		resp, err := http.DefaultClient.Do(req)
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Do(req)
 		if err != nil {
 			return channelActionsMsg{}
 		}
@@ -568,7 +570,8 @@ func pollScheduler() tea.Cmd {
 		if err != nil {
 			return channelSchedulerMsg{}
 		}
-		resp, err := http.DefaultClient.Do(req)
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Do(req)
 		if err != nil {
 			return channelSchedulerMsg{}
 		}
