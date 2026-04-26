@@ -145,11 +145,20 @@ type PamDispatcherConfig struct {
 	Runner  PamRunner
 }
 
+// pamWiki is the slice of WikiWorker that Pam actually depends on. Stays
+// with pam after Track B's `internal/pam` extraction; *team.WikiWorker keeps
+// satisfying it via duck typing, no import cycle. ReadArticle keeps the
+// signature primitive-only so the seam doesn't leak *team.Repo.
+type pamWiki interface {
+	Enqueue(ctx context.Context, slug, path, content, mode, commitMsg string) (string, int, error)
+	ReadArticle(relPath string) ([]byte, error)
+}
+
 // PamDispatcher serializes Pam's work. Like the entity + playbook
 // synthesizers, only one job runs at a time — otherwise two archivist
 // commits could race on the WikiWorker queue.
 type PamDispatcher struct {
-	worker    *WikiWorker
+	worker    pamWiki
 	publisher pamEventPublisher
 	cfg       PamDispatcherConfig
 
@@ -169,8 +178,10 @@ type PamDispatcher struct {
 }
 
 // NewPamDispatcher wires a dispatcher against the given worker. The publisher
-// may be nil in tests that don't care about SSE fan-out.
-func NewPamDispatcher(worker *WikiWorker, publisher pamEventPublisher, cfg PamDispatcherConfig) *PamDispatcher {
+// may be nil in tests that don't care about SSE fan-out. Worker is typed as
+// the narrow `pamWiki` interface — *WikiWorker satisfies it today, and any
+// future test seam or alternative backend only needs Enqueue + ReadArticle.
+func NewPamDispatcher(worker pamWiki, publisher pamEventPublisher, cfg PamDispatcherConfig) *PamDispatcher {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = DefaultPamTimeout
 	}
@@ -348,8 +359,7 @@ func (d *PamDispatcher) execute(ctx context.Context, job PamJob) error {
 		return err
 	}
 
-	repo := d.worker.Repo()
-	articleBytes, err := readArticle(repo, job.ArticlePath)
+	articleBytes, err := d.worker.ReadArticle(job.ArticlePath)
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrPamArticleMissing, job.ArticlePath)
 	}

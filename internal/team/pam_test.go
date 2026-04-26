@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -96,6 +97,78 @@ func (f *fakePamRunner) callCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.calls
+}
+
+// fakePamWiki is an in-memory pamWiki used to drive PamDispatcher unit tests
+// without spinning up a real wiki repo. ReadArticle returns articles[path] or
+// errFakeMissing. Enqueue records calls in enqueues.
+type fakePamWiki struct {
+	mu        sync.Mutex
+	articles  map[string][]byte
+	enqueues  []fakePamEnqueueCall
+	enqueueFn func(slug, path, content, mode, commitMsg string) (string, int, error)
+}
+
+type fakePamEnqueueCall struct {
+	Slug, Path, Content, Mode, CommitMsg string
+}
+
+var errFakePamMissing = errors.New("fake: article not found")
+
+func newFakePamWiki() *fakePamWiki {
+	return &fakePamWiki{articles: map[string][]byte{}}
+}
+
+func (f *fakePamWiki) ReadArticle(relPath string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	body, ok := f.articles[relPath]
+	if !ok {
+		return nil, errFakePamMissing
+	}
+	out := make([]byte, len(body))
+	copy(out, body)
+	return out, nil
+}
+
+func (f *fakePamWiki) Enqueue(_ context.Context, slug, path, content, mode, commitMsg string) (string, int, error) {
+	f.mu.Lock()
+	f.enqueues = append(f.enqueues, fakePamEnqueueCall{slug, path, content, mode, commitMsg})
+	fn := f.enqueueFn
+	f.mu.Unlock()
+	if fn != nil {
+		return fn(slug, path, content, mode, commitMsg)
+	}
+	return "fake-commit", 1, nil
+}
+
+func (f *fakePamWiki) seed(path string, body []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.articles[path] = body
+}
+
+func (f *fakePamWiki) enqueueCalls() []fakePamEnqueueCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]fakePamEnqueueCall, len(f.enqueues))
+	copy(out, f.enqueues)
+	return out
+}
+
+// newPamFixtureWithFake wires PamDispatcher against an in-memory fakePamWiki
+// so tests can exercise the dispatch path without touching git or disk.
+func newPamFixtureWithFake(t *testing.T, runner PamRunner) (*PamDispatcher, *fakePamWiki, *pamPublisherStub, func()) {
+	t.Helper()
+	wiki := newFakePamWiki()
+	pub := &pamPublisherStub{}
+	disp := NewPamDispatcher(wiki, pub, PamDispatcherConfig{
+		Timeout: 2 * time.Second,
+		Runner:  runner,
+	})
+	disp.Start(context.Background())
+	teardown := func() { disp.Stop() }
+	return disp, wiki, pub, teardown
 }
 
 func newPamFixture(t *testing.T, runner PamRunner) (*PamDispatcher, *WikiWorker, *pamPublisherStub, func()) {
@@ -297,6 +370,57 @@ func TestPamDispatcher_MissingArticlePublishesFailed(t *testing.T) {
 		t.Fatalf("enqueue: %v", err)
 	}
 	waitPamCounts(t, pub, 0, 0, 1, 3*time.Second)
+}
+
+// TestPamDispatcher_DispatchesViaPamWikiSeam exercises the full enrich path
+// against an in-memory fakePamWiki — proving the pamWiki interface is the
+// real seam and PamDispatcher does not reach past it into *Repo internals.
+// The body the runner returns must reach the wiki via Enqueue with the
+// canonical archivist commit message and replace mode.
+func TestPamDispatcher_DispatchesViaPamWikiSeam(t *testing.T) {
+	const path = "team/companies/acme.md"
+	const seedBody = "# Acme\n\nBefore enrichment.\n"
+	const enrichedBody = "# Acme\n\nAfter enrichment.\n"
+
+	runner := &fakePamRunner{
+		responder: func(_, userPrompt string) (string, error) {
+			// Pam's user prompt embeds the article body verbatim; assert that
+			// what ReadArticle returned reached the runner unmangled.
+			if !strings.Contains(userPrompt, seedBody) {
+				return "", errors.New("runner did not receive seed body in user prompt")
+			}
+			return enrichedBody, nil
+		},
+	}
+	disp, wiki, pub, teardown := newPamFixtureWithFake(t, runner)
+	defer teardown()
+
+	wiki.seed(path, []byte(seedBody))
+
+	if _, err := disp.Enqueue(PamActionEnrichArticle, path, "human"); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	waitPamCounts(t, pub, 1, 1, 0, 3*time.Second)
+
+	calls := wiki.enqueueCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 wiki Enqueue call, got %d", len(calls))
+	}
+	got := calls[0]
+	if got.Path != path {
+		t.Fatalf("expected Enqueue path=%q, got %q", path, got.Path)
+	}
+	if got.Slug != ArchivistAuthor {
+		t.Fatalf("expected commits attributed to %q, got %q", ArchivistAuthor, got.Slug)
+	}
+	if got.Mode != "replace" {
+		t.Fatalf("expected mode=replace, got %q", got.Mode)
+	}
+	// Pam trims trailing whitespace from the runner output before commit;
+	// substring-match against the enriched body's trimmed shape.
+	if !strings.Contains(got.Content, "After enrichment.") {
+		t.Fatalf("expected enriched body in Enqueue Content, got %q", got.Content)
+	}
 }
 
 // TestPamDispatcher_RunnerErrorPublishesFailedNotDone covers the
@@ -581,5 +705,71 @@ func TestHandlePamActions_WrongMethod(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d", res.StatusCode)
+	}
+}
+
+// TestHandlePamAction_EnrichArticleHappyPath drives a successful enrich job
+// through the full HTTP → dispatcher → WikiWorker pipeline and verifies that
+// the enriched body lands back on disk. Existing /pam/action tests cover
+// only failure modes (malformed JSON, missing path, etc.). The seam refactor
+// (pamWiki narrowed to ReadArticle) was specifically motivated by callers
+// like this one — the e2e proof that the new ReadArticle method actually
+// flows the article body through the dispatcher to the runner is what was
+// missing, and it's the test I would have wanted while reviewing #298.
+func TestHandlePamAction_EnrichArticleHappyPath(t *testing.T) {
+	srv, b, teardown := newPamHTTPFixture(t)
+	defer teardown()
+
+	const path = "team/companies/acme.md"
+	const seedBody = "# Acme\n\nBefore Pam.\n"
+
+	// Seed the article on disk through the same WikiWorker that handlePamAction
+	// will dispatch through, so we go through the real ReadArticle path.
+	b.mu.Lock()
+	worker := b.wikiWorker
+	b.mu.Unlock()
+	if _, _, err := worker.Enqueue(context.Background(), "human", path, seedBody, "replace", "seed: "+path); err != nil {
+		t.Fatalf("seed enqueue: %v", err)
+	}
+	worker.WaitForIdle()
+
+	body, _ := json.Marshal(map[string]any{
+		"action":     "enrich_article",
+		"path":       path,
+		"actor_slug": "human",
+	})
+	req, _ := pamAuthReq(http.MethodPost, srv.URL+"/pam/action", bytes.NewReader(body), b.Token())
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusAccepted && res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200/202, got %d", res.StatusCode)
+	}
+
+	// Wait for the dispatcher to drain — the fixture's fakePamRunner is
+	// deterministic and the WikiWorker queue is in-process.
+	deadline := time.Now().Add(3 * time.Second)
+	var enriched []byte
+	for time.Now().Before(deadline) {
+		got, err := worker.ReadArticle(path)
+		if err == nil && !bytes.Equal(got, []byte(seedBody)) {
+			enriched = got
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if enriched == nil {
+		t.Fatalf("timed out waiting for Pam to enrich %s through the HTTP path", path)
+	}
+	// fakePamRunner echoes the user prompt + "\n\npam!" — verify the runner
+	// saw the seed body (proving ReadArticle reached it through the seam) and
+	// that its output landed back on disk via Enqueue.
+	if !bytes.Contains(enriched, []byte("pam!")) {
+		t.Fatalf("expected enriched article to include runner suffix, got %q", enriched)
+	}
+	if !bytes.Contains(enriched, []byte("Before Pam.")) {
+		t.Fatalf("expected enriched article to retain seed body, got %q", enriched)
 	}
 }
