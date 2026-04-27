@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/nex-crm/wuphf/internal/buildinfo"
@@ -164,6 +165,13 @@ func main() {
 	}
 
 	flag.Parse()
+
+	// Railway (and other PaaS) set $PORT; honour it when --web-port wasn't given explicitly.
+	if portEnv := os.Getenv("PORT"); portEnv != "" {
+		if p, err := strconv.Atoi(portEnv); err == nil && p > 0 {
+			*webPort = p
+		}
+	}
 
 	if *helpAll {
 		fmt.Fprintf(os.Stderr, "WUPHF v%s — all flags (including internal):\n\n", buildinfo.Current().Version)

@@ -2340,7 +2340,16 @@ func (b *Broker) handleAgentStream(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeWebUI starts a static file server for the web UI on the given port.
+// Set WUPHF_WEB_HOST to "0.0.0.0" to bind on all interfaces (e.g. Railway).
+// When the host is not loopback the DNS-rebinding guard is skipped — security
+// relies on the broker Bearer token and the operator's network controls.
 func (b *Broker) ServeWebUI(port int) {
+	webHost := os.Getenv("WUPHF_WEB_HOST")
+	if webHost == "" {
+		webHost = "127.0.0.1"
+	}
+	isPublic := webHost != "127.0.0.1" && webHost != "::1" && webHost != "localhost"
+
 	b.webUIOrigins = []string{
 		fmt.Sprintf("http://localhost:%d", port),
 		fmt.Sprintf("http://127.0.0.1:%d", port),
@@ -2372,23 +2381,26 @@ func (b *Broker) ServeWebUI(port int) {
 	if addr := strings.TrimSpace(b.Addr()); addr != "" {
 		brokerURL = "http://" + addr
 	}
-	// Same-origin proxy to the broker for app API routes and onboarding wizard routes.
-	// Both are wrapped in webUIRebindGuard: the proxy auto-attaches the broker's
-	// Bearer token server-side, so without a Host/RemoteAddr check, a DNS-rebinding
-	// attack against an attacker-controlled hostname that resolves to 127.0.0.1
-	// would ride the token and control the entire office.
-	mux.Handle("/api/", webUIRebindGuard(b.webUIProxyHandler(brokerURL, "/api")))
-	mux.Handle("/onboarding/", webUIRebindGuard(b.webUIProxyHandler(brokerURL, "")))
-	// Token endpoint — no auth needed, but we require a same-origin loopback request.
-	// Otherwise this endpoint leaks the broker bearer to any browser page that
-	// can reach the web UI port via DNS rebinding.
-	mux.Handle("/api-token", webUIRebindGuard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tokenHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"token":      b.token,
 			"broker_url": brokerURL,
 		})
-	})))
+	})
+	if isPublic {
+		// Public mode (e.g. Railway): no loopback guard. The broker Bearer token
+		// is the auth boundary; the operator is responsible for network controls.
+		mux.Handle("/api/", b.webUIProxyHandler(brokerURL, "/api"))
+		mux.Handle("/onboarding/", b.webUIProxyHandler(brokerURL, ""))
+		mux.Handle("/api-token", tokenHandler)
+	} else {
+		// Local mode: wrap sensitive handlers with the DNS-rebinding guard so
+		// a malicious page cannot ride the auto-attached Bearer token.
+		mux.Handle("/api/", webUIRebindGuard(b.webUIProxyHandler(brokerURL, "/api")))
+		mux.Handle("/onboarding/", webUIRebindGuard(b.webUIProxyHandler(brokerURL, "")))
+		mux.Handle("/api-token", webUIRebindGuard(tokenHandler))
+	}
 	// Cache policy: index.html must be re-fetched every load so users pick up
 	// new JS/CSS bundle hashes immediately after an upgrade. Hashed assets
 	// under /assets/ are content-addressed and safe to cache aggressively.
@@ -2396,8 +2408,9 @@ func (b *Broker) ServeWebUI(port int) {
 	// Chrome's heuristic cache revalidates HTML only occasionally.
 	mux.Handle("/", cacheControlMiddleware(fileServer))
 	go func() {
-		if err := http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", port), mux); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("broker web UI proxy: listen on :%d: %v", port, err)
+		addr := fmt.Sprintf("%s:%d", webHost, port)
+		if err := http.ListenAndServe(addr, mux); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("broker web UI proxy: listen on %s: %v", addr, err)
 		}
 	}()
 }

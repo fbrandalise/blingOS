@@ -1,0 +1,9 @@
+[build]
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "wuphf --no-open --no-nex"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
