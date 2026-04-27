@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchReviews } from "../../api/notebook";
 import Pam from "./Pam";
 
-export type WikiTab = "wiki" | "notebooks" | "reviews";
+export type WikiTab = "wiki" | "notebooks" | "reviews" | "big-bets";
 
 interface WikiTabsProps {
   current: WikiTab;
@@ -57,6 +57,7 @@ export default function WikiTabs({
       label: "Reviews",
       badge: pendingReviews > 0 ? pendingReviews : undefined,
     },
+    { id: "big-bets", label: "Big Bets" },
   ];
 
   return (

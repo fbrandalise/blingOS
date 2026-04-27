@@ -1,0 +1,303 @@
+import { useEffect, useRef, useState } from "react";
+
+import {
+  type WikiCatalogEntry,
+  createBigBet,
+  fetchArticle,
+  fetchCatalog,
+  type WikiArticle,
+} from "../../api/wiki";
+import "../../styles/wiki.css";
+
+function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63);
+}
+
+function extractH1(md: string): string {
+  const match = md.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : "";
+}
+
+// ── Creation form ────────────────────────────────────────────────
+
+interface CreateFormProps {
+  onCreated: (path: string) => void;
+}
+
+function CreateForm({ onCreated }: CreateFormProps) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [content, setContent] = useState("");
+  const [title, setTitle] = useState("");
+  const [slug, setSlug] = useState("");
+  const [area, setArea] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setContent(text);
+      const h1 = extractH1(text);
+      if (h1) {
+        setTitle(h1);
+        setSlug(slugify(h1));
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!content) {
+      setError("Selecione um arquivo .md.");
+      return;
+    }
+    if (!slug) {
+      setError("Informe o slug.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await createBigBet({ slug, title: title || slug, area, content });
+      onCreated(result.path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="bb-create-form" onSubmit={handleSubmit}>
+      <h2 className="bb-create-title">Nova Big Bet</h2>
+      <p className="bb-create-hint">
+        Envie o arquivo <code>.md</code> com a tese. Após criada, qualquer
+        alteração passará por revisão e aprovação.
+      </p>
+
+      <label className="bb-field">
+        <span>Arquivo (.md)</span>
+        <div className="bb-file-row">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".md,text/markdown,text/plain"
+            onChange={handleFile}
+            style={{ display: "none" }}
+          />
+          <button
+            type="button"
+            className="bb-file-btn"
+            onClick={() => fileRef.current?.click()}
+          >
+            Escolher arquivo
+          </button>
+          <span className="bb-file-name">
+            {content ? `${content.length} caracteres carregados` : "Nenhum arquivo"}
+          </span>
+        </div>
+      </label>
+
+      <label className="bb-field">
+        <span>Título</span>
+        <input
+          className="bb-input"
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            setSlug(slugify(e.target.value));
+          }}
+          placeholder="ex: Expansão para PMEs"
+        />
+      </label>
+
+      <label className="bb-field">
+        <span>Slug (URL)</span>
+        <input
+          className="bb-input"
+          value={slug}
+          onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+          placeholder="ex: expansao-pmes"
+          pattern="[a-z0-9][a-z0-9-]{0,62}"
+        />
+      </label>
+
+      <label className="bb-field">
+        <span>Área</span>
+        <input
+          className="bb-input"
+          value={area}
+          onChange={(e) => setArea(e.target.value)}
+          placeholder="ex: produto, engenharia, marketing…"
+        />
+      </label>
+
+      {error && <p className="bb-error">{error}</p>}
+
+      <button
+        type="submit"
+        className="bb-submit-btn"
+        disabled={submitting || !content}
+      >
+        {submitting ? "Enviando…" : "Criar Big Bet"}
+      </button>
+    </form>
+  );
+}
+
+// ── Article detail ───────────────────────────────────────────────
+
+interface DetailPanelProps {
+  path: string;
+  onBack: () => void;
+}
+
+function DetailPanel({ path, onBack }: DetailPanelProps) {
+  const [article, setArticle] = useState<WikiArticle | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchArticle(path)
+      .then((a) => { if (!cancelled) setArticle(a); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [path]);
+
+  if (loading) {
+    return <div className="bb-detail-loading">Carregando…</div>;
+  }
+  if (!article) return null;
+
+  return (
+    <div className="bb-detail">
+      <div className="bb-detail-header">
+        <button type="button" className="bb-back-btn" onClick={onBack}>
+          ← voltar
+        </button>
+        <h2 className="bb-detail-title">{article.title}</h2>
+        {article.locked && (
+          <span className="bb-locked-badge" title={`Bloqueado em ${article.locked_at ?? ""}`}>
+            🔒 Imutável — alterações exigem revisão
+          </span>
+        )}
+      </div>
+      <div className="bb-detail-meta">
+        <span>Última edição por <strong>{article.last_edited_by}</strong></span>
+        <span>{new Date(article.last_edited_ts).toLocaleDateString("pt-BR")}</span>
+        <span>{article.word_count} palavras</span>
+      </div>
+      <article className="bb-detail-body wk-article-body">
+        <pre className="bb-detail-content">{article.content}</pre>
+      </article>
+    </div>
+  );
+}
+
+// ── Main BigBetsApp ──────────────────────────────────────────────
+
+export default function BigBetsApp() {
+  const [bets, setBets] = useState<WikiCatalogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCatalog().then((entries) => {
+      if (cancelled) return;
+      setBets(entries.filter((e) => e.group === "big-bets"));
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  function handleCreated(path: string) {
+    setCreating(false);
+    // Refresh list and open new article
+    fetchCatalog().then((entries) => {
+      setBets(entries.filter((e) => e.group === "big-bets"));
+      setSelected(path);
+    });
+  }
+
+  const showRight = selected !== null || creating;
+
+  return (
+    <div className="wiki-root bb-root">
+      <div className="bb-layout">
+        {/* Left: list */}
+        <aside className="bb-sidebar">
+          <div className="bb-sidebar-header">
+            <span className="bb-sidebar-heading">Big Bets</span>
+            <button
+              type="button"
+              className="bb-new-btn"
+              onClick={() => { setCreating(true); setSelected(null); }}
+            >
+              + Nova
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="bb-sidebar-loading">Carregando…</div>
+          ) : bets.length === 0 ? (
+            <div className="bb-sidebar-empty">
+              Nenhuma big bet ainda.
+              <br />
+              <button
+                type="button"
+                className="bb-sidebar-empty-btn"
+                onClick={() => setCreating(true)}
+              >
+                Criar a primeira →
+              </button>
+            </div>
+          ) : (
+            <ul className="bb-list">
+              {bets.map((bet) => (
+                <li key={bet.path}>
+                  <button
+                    type="button"
+                    className={`bb-list-item${selected === bet.path ? " is-active" : ""}`}
+                    onClick={() => { setSelected(bet.path); setCreating(false); }}
+                  >
+                    <span className="bb-list-title">{bet.title}</span>
+                    <span className="bb-list-meta">
+                      {new Date(bet.last_edited_ts).toLocaleDateString("pt-BR")}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+
+        {/* Right: detail or create form */}
+        <main className="bb-main">
+          {!showRight && (
+            <div className="bb-empty-state">
+              <p>Selecione uma big bet ou crie uma nova.</p>
+            </div>
+          )}
+          {creating && <CreateForm onCreated={handleCreated} />}
+          {selected && !creating && (
+            <DetailPanel
+              path={selected}
+              onBack={() => setSelected(null)}
+            />
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}

@@ -31,6 +31,7 @@ import ReviewQueueKanban from "./components/review/ReviewQueueKanban";
 import { ConfirmHost } from "./components/ui/ConfirmDialog";
 import { ProviderSwitcherHost } from "./components/ui/ProviderSwitcher";
 import { ToastContainer } from "./components/ui/Toast";
+import BigBetsApp from "./components/wiki/BigBetsApp";
 import CitedAnswer from "./components/wiki/CitedAnswer";
 import Wiki from "./components/wiki/Wiki";
 import type { WikiTab } from "./components/wiki/WikiTabs";
@@ -157,7 +158,8 @@ function MainContent() {
             else if (tab === "notebooks") {
               setNotebookRoute(null, null);
               setCurrentApp("notebooks");
-            } else setCurrentApp("reviews");
+            } else if (tab === "reviews") setCurrentApp("reviews");
+            else setCurrentApp("big-bets");
           }}
         />
         <div className="wiki-shell-body">
@@ -170,7 +172,8 @@ function MainContent() {
   if (
     currentApp === "wiki" ||
     currentApp === "notebooks" ||
-    currentApp === "reviews"
+    currentApp === "reviews" ||
+    currentApp === "big-bets"
   ) {
     const handleTabChange = (tab: WikiTab) => {
       if (tab === "wiki") {
@@ -178,8 +181,10 @@ function MainContent() {
       } else if (tab === "notebooks") {
         setNotebookRoute(null, null);
         setCurrentApp("notebooks");
-      } else {
+      } else if (tab === "reviews") {
         setCurrentApp("reviews");
+      } else {
+        setCurrentApp("big-bets");
       }
     };
 
@@ -224,6 +229,7 @@ function MainContent() {
             />
           )}
           {currentApp === "reviews" && <ReviewQueueKanban />}
+          {currentApp === "big-bets" && <BigBetsApp />}
         </div>
       </div>
     );
