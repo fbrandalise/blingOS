@@ -2332,12 +2332,10 @@
   padding-bottom: 16px;
   border-bottom: 1px solid var(--wk-border-light);
 }
-.bb-detail-body { max-width: var(--wk-article-max); }
-.bb-detail-content {
-  white-space: pre-wrap;
+.bb-detail-body {
+  max-width: var(--wk-article-max);
   font-family: var(--wk-body-serif);
   font-size: 15px;
   line-height: 1.7;
   color: var(--wk-text);
-  margin: 0;
 }

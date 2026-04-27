@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import {
   type WikiCatalogEntry,
@@ -8,6 +10,11 @@ import {
   type WikiArticle,
 } from "../../api/wiki";
 import "../../styles/wiki.css";
+
+function stripFrontmatter(raw: string): string {
+  const m = raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+  return m ? raw.slice(m[0].length).trimStart() : raw;
+}
 
 function slugify(title: string): string {
   return title
@@ -200,7 +207,9 @@ function DetailPanel({ path, onBack }: DetailPanelProps) {
         <span>{article.word_count} palavras</span>
       </div>
       <article className="bb-detail-body wk-article-body">
-        <pre className="bb-detail-content">{article.content}</pre>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {stripFrontmatter(article.content)}
+        </ReactMarkdown>
       </article>
     </div>
   );
