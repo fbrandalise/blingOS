@@ -12,7 +12,8 @@
  * writes, etc.) in every article view.
  */
 
-import { get, post, sseURL } from "./client";
+import { subscribeBrokerEvents } from "./brokerEvents";
+import { get, post } from "./client";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -273,66 +274,20 @@ export function subscribeEntityEvents(
   onFact: (ev: FactRecordedEvent) => void,
   onSynth: (ev: BriefSynthesizedEvent) => void,
 ): () => void {
-  let closed = false;
-  let source: EventSource | null = null;
-
   const factHandler = (ev: MessageEvent) => {
-    if (closed) return;
     try {
       const data = JSON.parse(ev.data) as FactRecordedEvent;
-      if (data && data.kind === kind && data.slug === slug) {
-        onFact(data);
-      }
-    } catch {
-      // ignore malformed events
-    }
+      if (data && data.kind === kind && data.slug === slug) onFact(data);
+    } catch { /* ignore malformed */ }
   };
   const synthHandler = (ev: MessageEvent) => {
-    if (closed) return;
     try {
       const data = JSON.parse(ev.data) as BriefSynthesizedEvent;
-      if (data && data.kind === kind && data.slug === slug) {
-        onSynth(data);
-      }
-    } catch {
-      // ignore malformed events
-    }
+      if (data && data.kind === kind && data.slug === slug) onSynth(data);
+    } catch { /* ignore malformed */ }
   };
-
-  try {
-    // EventSource may be undefined in tests that stub SSE away.
-    const ES = (globalThis as { EventSource?: typeof EventSource }).EventSource;
-    if (!ES) return () => {};
-    source = new ES(sseURL("/events"));
-    source.addEventListener(
-      "entity:fact_recorded",
-      factHandler as EventListener,
-    );
-    source.addEventListener(
-      "entity:brief_synthesized",
-      synthHandler as EventListener,
-    );
-    source.onerror = () => {
-      // Keep the source open — EventSource auto-reconnects. Closing here
-      // would drop live fact updates after the first transient blip.
-    };
-  } catch {
-    source = null;
-  }
-
-  return () => {
-    closed = true;
-    if (source) {
-      source.removeEventListener(
-        "entity:fact_recorded",
-        factHandler as EventListener,
-      );
-      source.removeEventListener(
-        "entity:brief_synthesized",
-        synthHandler as EventListener,
-      );
-      source.close();
-      source = null;
-    }
-  };
+  return subscribeBrokerEvents({
+    "entity:fact_recorded": factHandler,
+    "entity:brief_synthesized": synthHandler,
+  });
 }

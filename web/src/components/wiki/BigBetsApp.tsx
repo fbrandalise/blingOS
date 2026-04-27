@@ -66,10 +66,14 @@ function CreateForm({ onCreated }: CreateFormProps) {
     }
     setSubmitting(true);
     try {
+      const controller = new AbortController();
+      const timer = globalThis.setTimeout(() => controller.abort(), 10_000);
       const result = await createBigBet({ slug, title: title || slug, area, content });
+      globalThis.clearTimeout(timer);
       onCreated(result.path);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg.includes("abort") ? "Servidor não respondeu. Tente dar Ctrl+Shift+R e submeter novamente." : msg);
     } finally {
       setSubmitting(false);
     }
@@ -126,7 +130,6 @@ function CreateForm({ onCreated }: CreateFormProps) {
           value={slug}
           onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
           placeholder="ex: expansao-pmes"
-          pattern="[a-z0-9][a-z0-9-]{0,62}"
         />
       </label>
 
@@ -209,16 +212,24 @@ export default function BigBetsApp() {
   const [bets, setBets] = useState<WikiCatalogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(true); // default to create form open
 
   useEffect(() => {
     let cancelled = false;
+    const timer = globalThis.setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, 5000);
     fetchCatalog().then((entries) => {
       if (cancelled) return;
       setBets(entries.filter((e) => e.group === "big-bets"));
       setLoading(false);
-    });
-    return () => { cancelled = true; };
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
+    }).finally(() => globalThis.clearTimeout(timer));
+    return () => {
+      cancelled = true;
+      globalThis.clearTimeout(timer);
+    };
   }, []);
 
   function handleCreated(path: string) {

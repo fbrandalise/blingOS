@@ -10,7 +10,8 @@
  * message.
  */
 
-import { get, post, sseURL } from "./client";
+import { subscribeBrokerEvent } from "./brokerEvents";
+import { get, post } from "./client";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -137,48 +138,13 @@ export function subscribePlaybookEvents(
   slug: string,
   onExecutionRecorded: (ev: PlaybookExecutionRecordedEvent) => void,
 ): () => void {
-  let closed = false;
-  let source: EventSource | null = null;
-
   const handler = (ev: MessageEvent) => {
-    if (closed) return;
     try {
       const data = JSON.parse(ev.data) as PlaybookExecutionRecordedEvent;
-      if (data && data.slug === slug) {
-        onExecutionRecorded(data);
-      }
-    } catch {
-      // ignore malformed events
-    }
+      if (data && data.slug === slug) onExecutionRecorded(data);
+    } catch { /* ignore malformed */ }
   };
-
-  try {
-    const ES = (globalThis as { EventSource?: typeof EventSource }).EventSource;
-    if (!ES) return () => {};
-    source = new ES(sseURL("/events"));
-    source.addEventListener(
-      "playbook:execution_recorded",
-      handler as EventListener,
-    );
-    source.onerror = () => {
-      // Keep the source open — EventSource auto-reconnects on transient
-      // network blips. Closing here would drop live updates.
-    };
-  } catch {
-    source = null;
-  }
-
-  return () => {
-    closed = true;
-    if (source) {
-      source.removeEventListener(
-        "playbook:execution_recorded",
-        handler as EventListener,
-      );
-      source.close();
-      source = null;
-    }
-  };
+  return subscribeBrokerEvent("playbook:execution_recorded", handler);
 }
 
 /**
@@ -191,44 +157,13 @@ export function subscribePlaybookSynthesizedEvents(
   slug: string,
   onSynthesized: (ev: PlaybookSynthesizedEvent) => void,
 ): () => void {
-  let closed = false;
-  let source: EventSource | null = null;
-
   const handler = (ev: MessageEvent) => {
-    if (closed) return;
     try {
       const data = JSON.parse(ev.data) as PlaybookSynthesizedEvent;
-      if (data && data.slug === slug) {
-        onSynthesized(data);
-      }
-    } catch {
-      // ignore malformed events
-    }
+      if (data && data.slug === slug) onSynthesized(data);
+    } catch { /* ignore malformed */ }
   };
-
-  try {
-    const ES = (globalThis as { EventSource?: typeof EventSource }).EventSource;
-    if (!ES) return () => {};
-    source = new ES(sseURL("/events"));
-    source.addEventListener("playbook:synthesized", handler as EventListener);
-    source.onerror = () => {
-      // Keep open; EventSource auto-reconnects.
-    };
-  } catch {
-    source = null;
-  }
-
-  return () => {
-    closed = true;
-    if (source) {
-      source.removeEventListener(
-        "playbook:synthesized",
-        handler as EventListener,
-      );
-      source.close();
-      source = null;
-    }
-  };
+  return subscribeBrokerEvent("playbook:synthesized", handler);
 }
 
 /** Detect whether a wiki path is a source playbook article. Matches the
