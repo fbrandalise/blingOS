@@ -7,6 +7,7 @@ import {
   createBigBet,
   fetchArticle,
   fetchCatalog,
+  proposeAmendment,
   type WikiArticle,
 } from "../../api/wiki";
 import "../../styles/wiki.css";
@@ -173,10 +174,14 @@ interface DetailPanelProps {
 function DetailPanel({ path, onBack }: DetailPanelProps) {
   const [article, setArticle] = useState<WikiArticle | null>(null);
   const [loading, setLoading] = useState(true);
+  const [proposing, setProposing] = useState(false);
+  const [submitted, setSubmitted] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setProposing(false);
+    setSubmitted(null);
     fetchArticle(path)
       .then((a) => { if (!cancelled) setArticle(a); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -188,29 +193,146 @@ function DetailPanel({ path, onBack }: DetailPanelProps) {
   }
   if (!article) return null;
 
+  const body = stripFrontmatter(article.content);
+
   return (
     <div className="bb-detail">
       <div className="bb-detail-header">
         <button type="button" className="bb-back-btn" onClick={onBack}>
           ← voltar
         </button>
-        <h2 className="bb-detail-title">{article.title}</h2>
+        <div className="bb-detail-header-row">
+          <h2 className="bb-detail-title">{article.title}</h2>
+          {!proposing && !submitted && (
+            <button
+              type="button"
+              className="bb-propose-btn"
+              onClick={() => setProposing(true)}
+            >
+              Propor nova versão
+            </button>
+          )}
+        </div>
         {article.locked && (
-          <span className="bb-locked-badge" title={`Bloqueado em ${article.locked_at ?? ""}`}>
-            🔒 Imutável — alterações exigem revisão
+          <span className="bb-locked-badge">
+            🔒 Imutável — alterações exigem revisão e aprovação
           </span>
         )}
       </div>
-      <div className="bb-detail-meta">
-        <span>Última edição por <strong>{article.last_edited_by}</strong></span>
-        <span>{new Date(article.last_edited_ts).toLocaleDateString("pt-BR")}</span>
-        <span>{article.word_count} palavras</span>
+
+      {submitted && (
+        <div className="wk-amendment-confirm" role="status">
+          Proposta <code>{submitted}</code> enviada para revisão. Aguardando
+          aprovação.{" "}
+          <button
+            type="button"
+            className="wk-amendment-confirm-close"
+            onClick={() => setSubmitted(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {proposing ? (
+        <AmendmentForm
+          path={path}
+          initialBody={body}
+          onSubmitted={(id) => { setSubmitted(id); setProposing(false); }}
+          onCancel={() => setProposing(false)}
+        />
+      ) : (
+        <>
+          <div className="bb-detail-meta">
+            <span>Última edição por <strong>{article.last_edited_by}</strong></span>
+            <span>{new Date(article.last_edited_ts).toLocaleDateString("pt-BR")}</span>
+            <span>{article.word_count} palavras</span>
+          </div>
+          <article className="bb-detail-body">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {body}
+            </ReactMarkdown>
+          </article>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Amendment form ───────────────────────────────────────────────
+
+interface AmendmentFormProps {
+  path: string;
+  initialBody: string;
+  onSubmitted: (promotionId: string) => void;
+  onCancel: () => void;
+}
+
+function AmendmentForm({ path, initialBody, onSubmitted, onCancel }: AmendmentFormProps) {
+  const [content, setContent] = useState(initialBody);
+  const [rationale, setRationale] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    if (!rationale.trim()) {
+      setError("Descreva o motivo da alteração.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await proposeAmendment({ path, content, rationale: rationale.trim() });
+      onSubmitted(result.promotion_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao enviar proposta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="wk-amendment-editor">
+      <div className="wk-amendment-editor-notice">
+        <strong>Modo de proposta</strong> — Sua edição será submetida para
+        revisão e não será publicada até ser aprovada.
       </div>
-      <article className="bb-detail-body wk-article-body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {stripFrontmatter(article.content)}
-        </ReactMarkdown>
-      </article>
+      <textarea
+        className="wk-amendment-editor-textarea"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        rows={24}
+        spellCheck={false}
+        aria-label="Conteúdo proposto"
+      />
+      <div className="wk-amendment-editor-footer">
+        <input
+          type="text"
+          className="wk-amendment-editor-rationale"
+          placeholder="Motivo da alteração (obrigatório)"
+          value={rationale}
+          onChange={(e) => setRationale(e.target.value)}
+        />
+        {error && <span className="wk-amendment-editor-error">{error}</span>}
+        <div className="wk-amendment-editor-actions">
+          <button
+            type="button"
+            className="wk-amendment-editor-cancel"
+            onClick={onCancel}
+            disabled={saving}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="wk-amendment-editor-submit"
+            onClick={() => void handleSubmit()}
+            disabled={saving}
+          >
+            {saving ? "Enviando…" : "Enviar para revisão"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
