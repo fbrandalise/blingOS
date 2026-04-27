@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nex-crm/wuphf/internal/agent"
+	"github.com/nex-crm/wuphf/internal/provider"
 )
 
 // openAICompatToolLoop is the broker-agnostic core of
@@ -50,17 +51,20 @@ type openAICompatToolLoop struct {
 //     Only the LAST iteration's text counts: the final iteration is the one
 //     that didn't fire any tools.
 //   - iterations: how many streaming turns ran. Useful for latency logs.
+//   - usage: summed token counts across every iteration this turn fired.
+//     Populated only for usage chunks the SSE parser surfaces; servers
+//     that don't honour stream_options.include_usage produce a zero value.
 //   - streamErr: a model-side or transport error reported via an "error"
 //     stream chunk. Returned as a string (not error) because it represents
 //     the model failing, not the loop itself; the caller decides whether
 //     to escalate.
 //   - err: a context cancellation or other Go-side error.
-func (lp *openAICompatToolLoop) run(ctx context.Context, msgs []agent.Message) (finalText string, iterations int, streamErr string, err error) {
+func (lp *openAICompatToolLoop) run(ctx context.Context, msgs []agent.Message) (finalText string, iterations int, usage provider.ClaudeUsage, streamErr string, err error) {
 	if lp.maxIters <= 0 {
-		return "", 0, "", fmt.Errorf("openAICompatToolLoop: maxIters must be > 0")
+		return "", 0, provider.ClaudeUsage{}, "", fmt.Errorf("openAICompatToolLoop: maxIters must be > 0")
 	}
 	if lp.toolTimeout <= 0 {
-		return "", 0, "", fmt.Errorf("openAICompatToolLoop: toolTimeout must be > 0")
+		return "", 0, provider.ClaudeUsage{}, "", fmt.Errorf("openAICompatToolLoop: toolTimeout must be > 0")
 	}
 
 	firstEventFired := false
@@ -85,7 +89,7 @@ func (lp *openAICompatToolLoop) run(ctx context.Context, msgs []agent.Message) (
 					for range ch {
 					}
 				}()
-				return "", iterations, "", ctx.Err()
+				return "", iterations, usage, "", ctx.Err()
 			case chunk, ok := <-ch:
 				if !ok {
 					break DRAIN
@@ -119,6 +123,29 @@ func (lp *openAICompatToolLoop) run(ctx context.Context, msgs []agent.Message) (
 						lp.onToolUse(chunk.ToolName, chunk.ToolInput)
 					}
 					turnToolUses = append(turnToolUses, chunk)
+				case "usage":
+					// Output tokens are per-iteration (the tokens the
+					// model just generated this round), so summing
+					// across iterations gives the turn's total
+					// generation cost.
+					usage.OutputTokens += chunk.OutputTokens
+					usage.CacheReadTokens += chunk.CacheReadTokens
+					usage.CacheCreationTokens += chunk.CacheCreationTokens
+					// Input tokens are cumulative WITHIN each iteration
+					// (each request body includes the full prior
+					// conversation: system + user + asst_iter1 +
+					// tool_result_iter1 + ... + asst_iterN-1 +
+					// tool_result_iterN-1). Summing across iterations
+					// would double-count the system prompt N times for
+					// an N-iteration turn, making mlx-lm's panel totals
+					// 2-5× larger than equivalent Claude/Codex turns
+					// for no real reason. The last iteration's
+					// prompt_tokens is the turn's true input footprint.
+					// Use max() rather than overwrite so a server that
+					// emits a degenerate later frame can't shrink it.
+					if chunk.InputTokens > usage.InputTokens {
+						usage.InputTokens = chunk.InputTokens
+					}
 				case "error":
 					turnErr = chunk.Content
 					if lp.onError != nil {
@@ -129,7 +156,7 @@ func (lp *openAICompatToolLoop) run(ctx context.Context, msgs []agent.Message) (
 		}
 
 		if turnErr != "" {
-			return "", iterations, turnErr, nil
+			return "", iterations, usage, turnErr, nil
 		}
 
 		// The final reply is whichever iteration's text we last saw.
@@ -141,7 +168,7 @@ func (lp *openAICompatToolLoop) run(ctx context.Context, msgs []agent.Message) (
 		}
 
 		if len(turnToolUses) == 0 {
-			return finalText, iterations, "", nil
+			return finalText, iterations, usage, "", nil
 		}
 
 		// Encode the assistant's tool intent as a plain text turn so the
@@ -202,7 +229,7 @@ func (lp *openAICompatToolLoop) run(ctx context.Context, msgs []agent.Message) (
 	if finalText == "" {
 		finalText = fmt.Sprintf("(tool loop hit %d iterations without resolving — see latency log for details)", lp.maxIters)
 	}
-	return finalText, iterations, fmt.Sprintf("openai-compat: tool loop exceeded %d iterations without resolving", lp.maxIters), nil
+	return finalText, iterations, usage, fmt.Sprintf("openai-compat: tool loop exceeded %d iterations without resolving", lp.maxIters), nil
 }
 
 // encodeAssistantToolIntent serializes the model's tool intent as the
