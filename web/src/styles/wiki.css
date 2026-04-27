@@ -913,6 +913,122 @@
 }
 .wk-error { color: var(--wk-wikilink-broken); }
 
+/* ── Big Bet lock banner ──────────────────────────────────────────────── */
+.wk-lock-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wk-amber-banner);
+  border: 1px solid var(--wk-amber);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  font-family: var(--wk-chrome);
+  font-size: 13px;
+  color: var(--wk-text);
+}
+.wk-lock-banner-icon { font-size: 14px; flex-shrink: 0; }
+.wk-lock-banner-text { flex: 1; }
+.wk-lock-banner-propose {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--wk-amber);
+  border-radius: 3px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-family: var(--wk-chrome);
+  cursor: pointer;
+  color: var(--wk-text);
+}
+.wk-lock-banner-propose:hover { background: var(--wk-amber-bg); }
+
+/* Amendment submitted confirmation */
+.wk-amendment-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wk-paper-dark);
+  border: 1px solid var(--wk-border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-family: var(--wk-chrome);
+  font-size: 13px;
+}
+.wk-amendment-confirm-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--wk-text-muted);
+  padding: 0 4px;
+}
+
+/* ── Amendment editor ─────────────────────────────────────────────────── */
+.wk-amendment-editor { display: flex; flex-direction: column; gap: 12px; }
+.wk-amendment-editor-notice {
+  background: var(--wk-amber-banner);
+  border: 1px solid var(--wk-amber);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: var(--wk-chrome);
+  font-size: 13px;
+}
+.wk-amendment-editor-textarea {
+  width: 100%;
+  font-family: var(--wk-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  background: var(--wk-paper-dark);
+  border: 1px solid var(--wk-border);
+  border-radius: 4px;
+  padding: 12px;
+  resize: vertical;
+  color: var(--wk-text);
+}
+.wk-amendment-editor-footer { display: flex; flex-direction: column; gap: 8px; }
+.wk-amendment-editor-rationale {
+  font-family: var(--wk-chrome);
+  font-size: 13px;
+  background: var(--wk-paper-dark);
+  border: 1px solid var(--wk-border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  color: var(--wk-text);
+  width: 100%;
+}
+.wk-amendment-editor-error {
+  font-size: 12px;
+  color: var(--wk-wikilink-broken);
+  font-family: var(--wk-chrome);
+}
+.wk-amendment-editor-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.wk-amendment-editor-cancel,
+.wk-amendment-editor-submit {
+  font-family: var(--wk-chrome);
+  font-size: 13px;
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+  border: 1px solid var(--wk-border);
+}
+.wk-amendment-editor-cancel {
+  background: var(--wk-paper);
+  color: var(--wk-text-muted);
+}
+.wk-amendment-editor-submit {
+  background: var(--wk-text);
+  color: var(--wk-paper);
+  border-color: var(--wk-text);
+}
+.wk-amendment-editor-submit:disabled,
+.wk-amendment-editor-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Subtle spinner used for in-flight modal actions. Sized to sit inline with
  * 13px button text without forcing a layout reflow. Wiki-surface scoped —
  * no amber, no accent gradient; it uses the neutral border tokens so the

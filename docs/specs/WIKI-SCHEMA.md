@@ -84,7 +84,7 @@ YAML frontmatter fields used across wiki files. Every field has a default; legac
 ---
 canonical_slug: sarah-jones          # authoritative slug. If this is a redirect,
                                       # the value is the real slug this file points to
-kind: person                          # person | company | project | team | workspace
+kind: person                          # person | company | project | team | workspace | big_bet
 aliases:                              # other names this entity is known by
   - Sarah J.
   - sjones
@@ -176,6 +176,35 @@ Insights are facts that rise above the noise: status changes, decisions, pattern
 ```
 
 `source` = `"synthesis"` | `"save_as_insight"` | `"lint"` | `"human"`.
+
+### 4.5-b Big Bet — `team/big-bets/{slug}.md`
+
+Big Bets are major strategic bets (product, engineering, marketing, etc.) authored by the team. They live under `team/big-bets/` and are **born locked** — any edit after initial creation requires human approval before being applied.
+
+```yaml
+---
+kind: big_bet
+canonical_slug: blingos-marketplace  # stable slug, never renamed
+area: product                         # product | engineering | marketing | general
+locked: true                          # always true; gates the amendment review flow
+locked_at: 2026-04-27T12:00:00Z      # ISO-8601 creation timestamp
+lock_version: 1                       # bumped by the broker on each approved amendment
+created_by: fbrandalise               # human slug of the author
+created_at: 2026-04-27T12:00:00Z     # ISO-8601 creation timestamp
+---
+```
+
+**Write semantics:**
+
+1. **Creation** (`POST /wiki/big-bets`) — direct commit, sets `locked: true` immediately. No review required.
+2. **Amendment** — any subsequent write to a `locked: true` big-bet path is intercepted by `handleWikiWriteHuman` and routed to the review queue (`wiki/.reviews/reviews.jsonl`) as an `is_amendment: true` promotion with `human_only: true` and `reviewer_slug: human-only`.
+3. **Approval** (`POST /review/{id}/approve`) — `ApplyAmendment` on the Repo overwrites the article body while preserving the original frontmatter (including `locked: true`). `lock_version` is NOT auto-bumped in v1 (reserved for v1.1).
+4. **Rejection** — the proposed content is discarded; the article is unchanged.
+
+**Anti-patterns for Big Bets:**
+- Never set `locked: false` on a big-bet article — removing the lock bypasses the review gate.
+- Never write directly to `team/big-bets/**` via `WikiWorker.Enqueue` (agent path) — agent writes are not yet gated in v1; this is a v1.1 hardening item.
+- The `ProposedContent` stored inside a `Promotion` record carries the full markdown the author wrote; the body is extracted and merged with the original frontmatter at apply time.
 
 ### 4.5 Playbook — `wiki/playbooks/{slug}.md`
 

@@ -9,6 +9,7 @@ import {
   fetchHistory,
   fetchHumans,
   type HumanIdentity,
+  proposeAmendment,
   subscribeEditLog,
   type WikiArticle as WikiArticleT,
   type WikiCatalogEntry,
@@ -83,6 +84,7 @@ export default function WikiArticle({
   const [liveAgent, setLiveAgent] = useState<string | null>(null);
   const [_refreshNonce, setRefreshNonce] = useState(0);
   const [humans, setHumans] = useState<HumanIdentity[]>([]);
+  const [amendmentSent, setAmendmentSent] = useState<string | null>(null);
 
   // Fetch the human registry once per mount. The list is small (a handful
   // of team members) and changes rarely, so we skip refetching on every
@@ -200,6 +202,7 @@ export default function WikiArticle({
   const entity = detectEntity(article.path);
   const playbook = detectPlaybook(article.path);
   const breadcrumbSegments = article.path.split("/").filter(Boolean);
+  const isLocked = article.locked === true;
   const context = breadcrumbSegments[0] || "";
   const byline = (
     <Byline
@@ -214,6 +217,37 @@ export default function WikiArticle({
   return (
     <>
       <main className="wk-article-col">
+        {isLocked && (
+          <div className="wk-lock-banner" role="status" aria-label="Locked article">
+            <span className="wk-lock-banner-icon" aria-hidden="true">🔒</span>
+            <span className="wk-lock-banner-text">
+              <strong>Big Bet</strong> — Esta tese está travada.
+              Alterações devem ser aprovadas antes de serem aplicadas.
+            </span>
+            {tab !== "edit" && (
+              <button
+                type="button"
+                className="wk-lock-banner-propose"
+                onClick={() => setTab("edit")}
+              >
+                Propor alteração →
+              </button>
+            )}
+          </div>
+        )}
+        {amendmentSent && (
+          <div className="wk-amendment-confirm" role="status">
+            <strong>Proposta enviada para revisão</strong> — ID{" "}
+            <code>{amendmentSent}</code>. Aguardando aprovação.{" "}
+            <button
+              type="button"
+              className="wk-amendment-confirm-close"
+              onClick={() => setAmendmentSent(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {liveAgent && (
           <ArticleStatusBanner
             message={`${formatAgentName(liveAgent)} is editing this article right now.`}
@@ -235,6 +269,7 @@ export default function WikiArticle({
           active={tab}
           onChange={setTab}
           rightRail={context ? [context] : undefined}
+          disabledTabs={isLocked ? ["talk"] : ["talk"]}
         />
         <div className="wk-breadcrumb">
           <a
@@ -274,7 +309,7 @@ export default function WikiArticle({
             </ReactMarkdown>
           </div>
         )}
-        {tab === "edit" && (
+        {tab === "edit" && !isLocked && (
           <WikiEditor
             path={article.path}
             initialContent={article.content}
@@ -282,11 +317,20 @@ export default function WikiArticle({
             serverLastEditedTs={article.last_edited_ts}
             catalog={catalog}
             onSaved={(newSha) => {
-              // Refetch after every save — covers both happy path and
-              // the conflict-then-reload path (which passes the server's
-              // current_sha back as newSha).
               void newSha;
               setRefreshNonce((n) => n + 1);
+              setTab("article");
+            }}
+            onCancel={() => setTab("article")}
+          />
+        )}
+        {tab === "edit" && isLocked && (
+          <BigBetAmendmentEditor
+            path={article.path}
+            initialContent={article.content}
+            catalog={catalog}
+            onSubmitted={(id) => {
+              setAmendmentSent(id);
               setTab("article");
             }}
             onCancel={() => setTab("article")}
@@ -397,4 +441,89 @@ function slugify(s: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+// ── BigBetAmendmentEditor ─────────────────────────────────────────────────────
+
+interface BigBetAmendmentEditorProps {
+  path: string;
+  initialContent: string;
+  catalog: WikiCatalogEntry[];
+  onSubmitted: (promotionId: string) => void;
+  onCancel: () => void;
+}
+
+function BigBetAmendmentEditor({
+  path,
+  initialContent,
+  onSubmitted,
+  onCancel,
+}: BigBetAmendmentEditorProps) {
+  const [content, setContent] = useState(initialContent);
+  const [rationale, setRationale] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    const trimmedRationale = rationale.trim();
+    if (!trimmedRationale) {
+      setError("Descreva o motivo da alteração.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await proposeAmendment({ path, content, rationale: trimmedRationale });
+      onSubmitted(result.promotion_id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao enviar proposta.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="wk-amendment-editor">
+      <div className="wk-amendment-editor-notice">
+        <strong>Modo de proposta</strong> — Sua edição será submetida para
+        revisão e não será publicada até ser aprovada.
+      </div>
+      <textarea
+        className="wk-amendment-editor-textarea"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        rows={24}
+        spellCheck={false}
+        aria-label="Conteúdo proposto"
+      />
+      <div className="wk-amendment-editor-footer">
+        <input
+          type="text"
+          className="wk-amendment-editor-rationale"
+          placeholder="Motivo da alteração (obrigatório)"
+          value={rationale}
+          onChange={(e) => setRationale(e.target.value)}
+        />
+        {error && <span className="wk-amendment-editor-error">{error}</span>}
+        <div className="wk-amendment-editor-actions">
+          <button
+            type="button"
+            className="wk-amendment-editor-cancel"
+            onClick={onCancel}
+            disabled={saving}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="wk-amendment-editor-submit"
+            onClick={() => void handleSubmit()}
+            disabled={saving}
+          >
+            {saving ? "Enviando…" : "Enviar para revisão"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

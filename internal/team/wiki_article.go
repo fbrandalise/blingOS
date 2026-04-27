@@ -65,6 +65,10 @@ type ArticleMeta struct {
 	Backlinks    []Backlink `json:"backlinks"`
 	WordCount    int        `json:"word_count"`
 	Categories   []string   `json:"categories"`
+	// Locked is true for big-bet articles. Any edit after creation must go
+	// through the amendment review queue rather than writing directly.
+	Locked   bool   `json:"locked,omitempty"`
+	LockedAt string `json:"locked_at,omitempty"`
 }
 
 // Backlink represents another article that wikilinks to this article.
@@ -228,6 +232,7 @@ func (r *Repo) BuildArticle(ctx context.Context, relPath string) (ArticleMeta, e
 		return ArticleMeta{}, err
 	}
 
+	locked, lockedAt := parseLockFrontmatter(string(content))
 	meta := ArticleMeta{
 		Path:         relPath,
 		Content:      string(content),
@@ -236,6 +241,8 @@ func (r *Repo) BuildArticle(ctx context.Context, relPath string) (ArticleMeta, e
 		Contributors: []string{},
 		Backlinks:    []Backlink{},
 		Categories:   []string{},
+		Locked:       locked,
+		LockedAt:     lockedAt,
 	}
 
 	// Revision history and last-edit info (via git log).
@@ -422,6 +429,35 @@ func extractTitle(content []byte, relPath string) string {
 // Rough but sufficient for the UI's "N words" stat.
 func countWords(content []byte) int {
 	return len(strings.Fields(string(content)))
+}
+
+// parseLockFrontmatter reads the `locked` and `locked_at` frontmatter keys
+// from a markdown file. Used by BuildArticle to populate ArticleMeta.Locked.
+func parseLockFrontmatter(body string) (locked bool, lockedAt string) {
+	if !strings.HasPrefix(body, "---\n") {
+		return false, ""
+	}
+	rest := body[len("---\n"):]
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return false, ""
+	}
+	block := rest[:end]
+	for _, line := range strings.Split(block, "\n") {
+		m := frontmatterKeyLine.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		switch m[1] {
+		case "locked":
+			if strings.TrimSpace(m[2]) == "true" {
+				locked = true
+			}
+		case "locked_at":
+			lockedAt = strings.TrimSpace(m[2])
+		}
+	}
+	return locked, lockedAt
 }
 
 // uniqueAuthors returns distinct authors in first-seen order.

@@ -290,13 +290,18 @@ func (b *Broker) reviewItemForPromotion(p *Promotion) reviewItemResponse {
 	if p == nil {
 		return reviewItemResponse{}
 	}
-	sourceBody := ""
-	if worker := b.WikiWorker(); worker != nil {
-		if bytes, err := worker.NotebookRead(p.SourcePath); err == nil {
-			sourceBody = string(bytes)
+	var sourceBody, entrySlug string
+	if p.IsAmendment {
+		sourceBody = p.ProposedContent
+		entrySlug = filepath.Base(strings.TrimSuffix(filepath.ToSlash(p.TargetPath), ".md"))
+	} else {
+		if worker := b.WikiWorker(); worker != nil {
+			if bytes, err := worker.NotebookRead(p.SourcePath); err == nil {
+				sourceBody = string(bytes)
+			}
 		}
+		entrySlug = notebookEntrySlug(p.SourcePath)
 	}
-	entrySlug := notebookEntrySlug(p.SourcePath)
 	comments := make([]reviewCommentResponse, 0, len(p.Comments))
 	for _, c := range p.Comments {
 		comments = append(comments, reviewCommentResponse{
@@ -464,7 +469,7 @@ func (b *Broker) reviewApprove(w http.ResponseWriter, r *http.Request, id string
 		writeJSON(w, reviewStatusForError(authErr), map[string]string{"error": authErr.Error()})
 		return
 	}
-	// Executing the atomic promote commit happens BEFORE recording the
+	// Executing the atomic promote/amend commit happens BEFORE recording the
 	// state transition so the state machine's approved state always
 	// coincides with a real commit on disk. If the commit fails, the
 	// state stays in-review and the reviewer sees a 500/409.
@@ -473,7 +478,13 @@ func (b *Broker) reviewApprove(w http.ResponseWriter, r *http.Request, id string
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "wiki backend is not active"})
 		return
 	}
-	sha, commitErr := worker.Repo().ApplyPromotion(r.Context(), p, body.ActorSlug)
+	var sha string
+	var commitErr error
+	if p.IsAmendment {
+		sha, commitErr = worker.Repo().ApplyAmendment(r.Context(), p, body.ActorSlug)
+	} else {
+		sha, commitErr = worker.Repo().ApplyPromotion(r.Context(), p, body.ActorSlug)
+	}
 	if commitErr != nil {
 		if errors.Is(commitErr, ErrPromotionTargetExists) {
 			// Bounce the reviewer into `changes-requested` so the author

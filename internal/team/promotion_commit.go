@@ -147,6 +147,83 @@ func (r *Repo) ApplyPromotion(ctx context.Context, p *Promotion, approverSlug st
 	return sha, nil
 }
 
+// ApplyAmendment executes the atomic amendment commit for a locked big-bet
+// article. It preserves the existing frontmatter (keeping locked:true) and
+// replaces only the article body with p.ProposedContent. Returns the short
+// commit SHA.
+func (r *Repo) ApplyAmendment(ctx context.Context, p *Promotion, approverSlug string) (string, error) {
+	if p == nil {
+		return "", fmt.Errorf("amendment: nil promotion")
+	}
+	if !p.IsAmendment {
+		return "", fmt.Errorf("amendment: promotion is not an amendment")
+	}
+	approverSlug = strings.TrimSpace(approverSlug)
+	if approverSlug == "" {
+		approverSlug = "human"
+	}
+	if err := validateArticlePath(p.TargetPath); err != nil {
+		return "", err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	targetFull := filepath.Join(r.root, p.TargetPath)
+
+	currentBytes, err := os.ReadFile(targetFull)
+	if err != nil {
+		return "", fmt.Errorf("amendment: read current: %w", err)
+	}
+
+	// Keep the existing frontmatter intact (locked:true survives) and apply
+	// only the proposed body.
+	currentFM := extractFrontmatterBlock(string(currentBytes))
+	proposedBody := strings.TrimLeft(stripFrontmatter(p.ProposedContent), "\n")
+	var merged string
+	if currentFM != "" {
+		merged = currentFM + "\n\n" + proposedBody
+	} else {
+		merged = proposedBody
+	}
+
+	if err := os.WriteFile(targetFull, []byte(merged), 0o600); err != nil {
+		return "", fmt.Errorf("amendment: write: %w", err)
+	}
+
+	targetRel := filepath.ToSlash(p.TargetPath)
+	if out, err := r.runGitLocked(ctx, approverSlug, "add", "--", targetRel); err != nil {
+		return "", fmt.Errorf("amendment: git add: %w: %s", err, out)
+	}
+
+	msg := fmt.Sprintf(
+		"big-bet(amend): %s\n\nAmendment approved by %s.\n%s",
+		p.TargetPath, approverSlug, firstLine(p.Rationale),
+	)
+	if out, err := r.runGitLocked(ctx, approverSlug, "commit", "-q", "-m", msg); err != nil {
+		return "", fmt.Errorf("amendment: git commit: %w: %s", err, out)
+	}
+	shaOut, err := r.runGitLocked(ctx, approverSlug, "rev-parse", "--short", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("amendment: resolve HEAD: %w", err)
+	}
+	return strings.TrimSpace(shaOut), nil
+}
+
+// extractFrontmatterBlock returns the full YAML frontmatter block (including
+// opening and closing ---) when the body has one, or "" otherwise.
+func extractFrontmatterBlock(body string) string {
+	if !strings.HasPrefix(body, "---\n") {
+		return ""
+	}
+	rest := body[len("---\n"):]
+	idx := strings.Index(rest, "\n---")
+	if idx < 0 {
+		return ""
+	}
+	return "---\n" + rest[:idx] + "\n---"
+}
+
 // frontmatterFields captures the keys we write into a notebook entry's
 // YAML frontmatter block after promotion.
 type frontmatterFields struct {

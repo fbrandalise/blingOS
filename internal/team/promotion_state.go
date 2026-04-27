@@ -127,6 +127,11 @@ type Promotion struct {
 	CommitSHA    string            `json:"commit_sha,omitempty"`
 	Comments     []Comment         `json:"comments"`
 	StateHistory []StateTransition `json:"state_history"`
+	// IsAmendment marks a big-bet amendment review. Instead of promoting a
+	// notebook entry to a new wiki path, applying the promotion overwrites the
+	// existing locked big-bet article with ProposedContent.
+	IsAmendment     bool   `json:"is_amendment,omitempty"`
+	ProposedContent string `json:"proposed_content,omitempty"`
 }
 
 // SubmitPromotionRequest is the argument shape callers pass when creating a
@@ -227,6 +232,67 @@ func ReviewLogPath(wikiRoot string) string {
 
 // Path returns the on-disk JSONL path (for diagnostics).
 func (l *ReviewLog) Path() string { return l.path }
+
+// SubmitAmendmentRequest is the argument shape for big-bet amendment reviews.
+type SubmitAmendmentRequest struct {
+	SubmitterSlug   string
+	TargetPath      string
+	ProposedContent string
+	Rationale       string
+}
+
+// SubmitAmendment creates an amendment review for a locked big-bet article.
+// The reviewer is always "human-only"; the proposed content is stored inline
+// on the Promotion rather than in a notebook file on disk.
+func (l *ReviewLog) SubmitAmendment(req SubmitAmendmentRequest) (*Promotion, error) {
+	if strings.TrimSpace(req.SubmitterSlug) == "" {
+		return nil, fmt.Errorf("promotion: submitter_slug is required")
+	}
+	if err := validateArticlePath(req.TargetPath); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(req.ProposedContent) == "" {
+		return nil, fmt.Errorf("promotion: proposed_content is required")
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := l.clock().UTC()
+	id := l.nextIDLocked(now)
+	p := &Promotion{
+		ID:              id,
+		State:           PromotionPending,
+		SourceSlug:      req.SubmitterSlug,
+		SourcePath:      "",
+		TargetPath:      req.TargetPath,
+		Rationale:       strings.TrimSpace(req.Rationale),
+		ReviewerSlug:    "human-only",
+		HumanOnly:       true,
+		IsAmendment:     true,
+		ProposedContent: strings.TrimSpace(req.ProposedContent),
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		ExpiresAt:       now.Add(PromotionIdleExpiry),
+		Comments:        []Comment{},
+		StateHistory:    []StateTransition{},
+	}
+	transition := StateTransition{
+		PromotionID: id,
+		OldState:    "",
+		NewState:    PromotionPending,
+		Actor:       req.SubmitterSlug,
+		Rationale:   p.Rationale,
+		Timestamp:   now,
+	}
+	p.StateHistory = append(p.StateHistory, transition)
+	l.promotions[id] = p
+	if err := l.appendStateLocked(p, transition); err != nil {
+		delete(l.promotions, id)
+		return nil, err
+	}
+	return cloneProm(p), nil
+}
 
 // SubmitPromotion creates a new promotion in state=pending. The reviewer is
 // resolved from the target path via the injected resolver (human-only and

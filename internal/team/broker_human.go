@@ -13,8 +13,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 // humanIdentityRegistry is the process-wide registry the broker uses to
@@ -101,6 +104,12 @@ func (b *Broker) handleWikiWriteHuman(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content is required"})
 		return
 	}
+	// Big-bet gate: locked articles go through the amendment review queue.
+	if isBigBetPath(body.Path) {
+		b.handleBigBetAmendment(w, r, body.Path, body.Content, body.CommitMessage)
+		return
+	}
+
 	identity := brokerHumanIdentityRegistry().Local()
 	sha, n, err := worker.EnqueueHumanAs(
 		r.Context(), identity, body.Path, body.Content, body.CommitMessage, body.ExpectedSHA,
@@ -126,6 +135,147 @@ func (b *Broker) handleWikiWriteHuman(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"path":          body.Path,
+		"commit_sha":    sha,
+		"bytes_written": n,
+		"author_slug":   identity.Slug,
+	})
+}
+
+// isBigBetPath reports whether a wiki article path lives under team/big-bets/.
+func isBigBetPath(p string) bool {
+	return strings.HasPrefix(filepath.ToSlash(p), "team/big-bets/")
+}
+
+// handleBigBetAmendment intercepts a write to a locked big-bet article and
+// routes it to the review queue instead of applying it directly.
+func (b *Broker) handleBigBetAmendment(w http.ResponseWriter, r *http.Request, path, content, rationale string) {
+	worker := b.WikiWorker()
+	if worker == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "wiki backend is not active"})
+		return
+	}
+	current, err := readArticle(worker.Repo(), path)
+	if err != nil {
+		// Article doesn't exist yet — must be created via POST /wiki/big-bets.
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "big-bet articles must be created via POST /wiki/big-bets",
+		})
+		return
+	}
+	isLocked, _ := parseLockFrontmatter(string(current))
+	if !isLocked {
+		// Exists but not locked — treat as normal write (unlocked big-bet is an edge case).
+		identity := brokerHumanIdentityRegistry().Local()
+		sha, n, err := worker.EnqueueHumanAs(r.Context(), identity, path, content, rationale, "")
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"path": path, "commit_sha": sha, "bytes_written": n})
+		return
+	}
+
+	rl := b.ReviewLog()
+	if rl == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "review backend is not active"})
+		return
+	}
+	identity := brokerHumanIdentityRegistry().Local()
+	promotion, err := rl.SubmitAmendment(SubmitAmendmentRequest{
+		SubmitterSlug:   identity.Slug,
+		TargetPath:      path,
+		ProposedContent: content,
+		Rationale:       rationale,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	b.publishReviewEvent(ReviewStateChangeEvent{
+		ID:        promotion.ID,
+		OldState:  "",
+		NewState:  promotion.State,
+		ActorSlug: identity.Slug,
+		Timestamp: promotion.CreatedAt.Format(time.RFC3339),
+	})
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"promotion_id":  promotion.ID,
+		"reviewer_slug": promotion.ReviewerSlug,
+		"state":         promotion.State,
+		"message":       "amendment submitted for review",
+	})
+}
+
+// bigBetSlugRE validates big-bet slugs: lowercase alphanumeric and dashes.
+var bigBetSlugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+
+// handleBigBetCreate creates a new big-bet article with locked frontmatter.
+//
+//	POST /wiki/big-bets
+//	{ "slug": "...", "title": "...", "area": "...", "content": "..." }
+func (b *Broker) handleBigBetCreate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	worker := b.WikiWorker()
+	if worker == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "wiki backend is not active"})
+		return
+	}
+	var body struct {
+		Slug    string `json:"slug"`
+		Title   string `json:"title"`
+		Area    string `json:"area"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if !bigBetSlugRE.MatchString(body.Slug) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "slug must be lowercase alphanumeric with dashes"})
+		return
+	}
+	if strings.TrimSpace(body.Title) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
+		return
+	}
+
+	path := "team/big-bets/" + body.Slug + ".md"
+	if _, err := readArticle(worker.Repo(), path); err == nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "a big bet with this slug already exists"})
+		return
+	}
+
+	identity := brokerHumanIdentityRegistry().Local()
+	now := time.Now().UTC().Format(time.RFC3339)
+	area := strings.TrimSpace(body.Area)
+	if area == "" {
+		area = "general"
+	}
+	frontmatter := "---\nkind: big_bet\ncanonical_slug: " + body.Slug +
+		"\narea: " + area +
+		"\nlocked: true\nlocked_at: " + now +
+		"\nlock_version: 1\ncreated_by: " + identity.Slug +
+		"\ncreated_at: " + now + "\n---\n"
+
+	title := strings.TrimSpace(body.Title)
+	bodyText := strings.TrimSpace(body.Content)
+	var fullContent string
+	if bodyText != "" {
+		fullContent = frontmatter + "\n# " + title + "\n\n" + bodyText
+	} else {
+		fullContent = frontmatter + "\n# " + title + "\n"
+	}
+
+	sha, n, err := worker.EnqueueHumanAs(r.Context(), identity, path, fullContent, "feat(big-bet): "+title, "")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"path":          path,
 		"commit_sha":    sha,
 		"bytes_written": n,
 		"author_slug":   identity.Slug,

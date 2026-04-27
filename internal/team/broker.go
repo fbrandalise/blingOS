@@ -1527,6 +1527,7 @@ func (b *Broker) StartOnPort(port int) error {
 	mux.HandleFunc("/memory", b.requireAuth(b.handleMemory))
 	mux.HandleFunc("/wiki/write", b.requireAuth(b.handleWikiWrite))
 	mux.HandleFunc("/wiki/write-human", b.requireAuth(b.handleWikiWriteHuman))
+	mux.HandleFunc("/wiki/big-bets", b.requireAuth(b.handleBigBetCreate))
 	mux.HandleFunc("/humans", b.requireAuth(b.handleHumans))
 	mux.HandleFunc("/wiki/read", b.requireAuth(b.handleWikiRead))
 	mux.HandleFunc("/wiki/search", b.requireAuth(b.handleWikiSearch))

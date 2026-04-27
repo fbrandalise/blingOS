@@ -24,6 +24,9 @@ export interface WikiArticle {
   backlinks: { path: string; title: string; author_slug: string }[];
   word_count: number;
   categories: string[];
+  /** True for big-bet articles — edits go through the amendment review queue. */
+  locked?: boolean;
+  locked_at?: string;
 }
 
 /**
@@ -33,6 +36,57 @@ export interface WriteHumanOk {
   path: string;
   commit_sha: string;
   bytes_written: number;
+}
+
+/**
+ * 202 Accepted: returned when a write to a locked big-bet article is
+ * routed to the amendment review queue instead of being applied directly.
+ */
+export interface AmendmentSubmitted {
+  amendment: true;
+  promotion_id: string;
+  reviewer_slug: string;
+  state: string;
+  message: string;
+}
+
+export interface CreateBigBetParams {
+  slug: string;
+  title: string;
+  area: string;
+  content: string;
+}
+
+export interface CreateBigBetResult {
+  path: string;
+  commit_sha: string;
+  bytes_written: number;
+  author_slug: string;
+}
+
+export async function createBigBet(
+  params: CreateBigBetParams,
+): Promise<CreateBigBetResult> {
+  return await post<CreateBigBetResult>("/wiki/big-bets", params);
+}
+
+/**
+ * Propose an amendment to a locked big-bet article. The broker intercepts
+ * this write and routes it to the review queue (returns 202). The caller
+ * should show a confirmation rather than treating it as a save.
+ */
+export async function proposeAmendment(params: {
+  path: string;
+  content: string;
+  rationale: string;
+}): Promise<AmendmentSubmitted> {
+  const res = await post<AmendmentSubmitted | WriteHumanOk>("/wiki/write-human", {
+    path: params.path,
+    content: params.content,
+    commit_message: params.rationale,
+    expected_sha: "",
+  });
+  return { amendment: true, ...res } as AmendmentSubmitted;
 }
 
 /**
