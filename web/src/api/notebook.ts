@@ -273,13 +273,11 @@ function normalizeReviewItem(raw: ReviewItem | BackendPromotion): ReviewItem {
 
 // ── Catalog ──────────────────────────────────────────────────────
 
-export async function fetchCatalog(): Promise<NotebookCatalogSummary> {
+export async function fetchCatalog(
+  signal?: AbortSignal,
+): Promise<NotebookCatalogSummary> {
   if (!shouldUseMocks()) {
-    // Real backend: propagate errors so the empty-state / error-state UI
-    // surfaces real problems instead of masking them with mock fixtures.
-    // Swapping to mocks silently was hiding a missing /notebook/catalog
-    // endpoint for weeks in internal demos.
-    return await client.get<NotebookCatalogSummary>("/notebook/catalog");
+    return await client.get<NotebookCatalogSummary>("/notebook/catalog", undefined, signal);
   }
   const agents = MOCK_AGENTS;
   const total_entries = agents.reduce((sum, a) => sum + a.total, 0);

@@ -44,24 +44,24 @@ export default function Notebook({
   // Fetch catalog when rendering the bookshelf.
   useEffect(() => {
     if (agentSlug) return;
-    let cancelled = false;
+    const controller = new AbortController();
     setCatalogLoading(true);
     setCatalogError(null);
-    fetchCatalog()
+    fetchCatalog(controller.signal)
       .then((c) => {
-        if (!cancelled) setCatalog(c);
+        if (!controller.signal.aborted) setCatalog(c);
       })
       .catch((err: unknown) => {
-        if (!cancelled)
-          setCatalogError(
-            err instanceof Error ? err.message : "Failed to load",
-          );
+        if (controller.signal.aborted) return;
+        setCatalogError(
+          err instanceof Error ? err.message : "Failed to load",
+        );
       })
       .finally(() => {
-        if (!cancelled) setCatalogLoading(false);
+        if (!controller.signal.aborted) setCatalogLoading(false);
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [agentSlug, refreshTick]);
 

@@ -151,6 +151,14 @@
   overflow: hidden;
 }
 
+/* Article column scrolls independently within the grid. */
+.notebook-surface .nb-layout > .nb-article {
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
+}
+
 /* ── Author shelf (left sidebar) ─────────────────────────────── */
 .notebook-surface .nb-shelf {
   background-color: var(--olive-100, #f8ffdb);

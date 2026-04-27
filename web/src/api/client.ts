@@ -46,6 +46,7 @@ function authHeaders(): Record<string, string> {
 export async function get<T = unknown>(
   path: string,
   params?: Record<string, string | number | boolean | null | undefined>,
+  signal?: AbortSignal,
 ): Promise<T> {
   let url = baseURL() + path;
   if (params) {
@@ -57,7 +58,7 @@ export async function get<T = unknown>(
       .join("&");
     if (qs) url += `?${qs}`;
   }
-  const r = await fetch(url, { headers: authHeaders() });
+  const r = await fetch(url, { headers: authHeaders(), signal });
   if (!r.ok) {
     const text = (await r.text().catch(() => "")).trim();
     throw new Error(text || `${r.status} ${r.statusText}`);
